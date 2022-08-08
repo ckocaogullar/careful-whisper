@@ -47,6 +47,7 @@ extern const char * log_level_strings [];
 #else
 #define LOG(level, fmt, arg...) do {	\
 	if ( LOG_SHOULD_I(level) ) { \
+		mbedtls_printf("Logging control!\n"); \
 		mbedtls_compat_sgx_printf("[%s] %s:%d: " fmt "\n", log_level_strings[level], __FUNCTION__,__LINE__, ##arg); \
 	} \
 } while(0)

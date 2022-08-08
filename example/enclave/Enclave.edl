@@ -2,6 +2,7 @@ enclave {
     from "mbedtls_SGX.edl" import *;
     from "sgx_tstdc.edl" import *;
     include "../common/ssl_context.h"
+    include "sgx_key_exchange.h"
 
     trusted {
         /* define ECALLs here. */
@@ -10,6 +11,7 @@ enclave {
         public void ssl_conn_init(void);
         public void ssl_conn_teardown(void);
         public void ssl_conn_handle(long int thread_id, [in,out] thread_info_t* thread_info);
+        public int attestation_step1(uint32_t msg0_extended_epid_group_id, [in] sgx_ra_msg1_t *msg1);
     };
 
     untrusted {

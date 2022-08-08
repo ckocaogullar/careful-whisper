@@ -5,6 +5,7 @@ set(SOURCE_FILES
         pprint.c
         s_client.c
         s_server.c
+        hexstring.c
         ssl_conn_hdlr.cpp)
 
 add_definitions(-DENCLAVE_STD_ALT)

@@ -59,6 +59,10 @@
 #include "mbedtls/error.h"
 #include "mbedtls/debug.h"
 
+#include "hexstring.h"
+#include "sgx_key_exchange.h"
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1189,3 +1193,77 @@ usage:
 #endif /* MBEDTLS_BIGNUM_C && MBEDTLS_ENTROPY_C && MBEDTLS_SSL_TLS_C &&
           MBEDTLS_SSL_CLI_C && MBEDTLS_NET_C && MBEDTLS_RSA_C &&
           MBEDTLS_CTR_DRBG_C MBEDTLS_TIMING_C */
+
+
+int process_msg01 (uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1)
+{
+	mbedtls_printf("\nMsg0 Details (from Prover)\n");
+	mbedtls_printf("msg0.extended_epid_group_id = %u\n",
+			msg0_extended_epid_group_id);
+	mbedtls_printf("\n");
+	
+
+	/* According to the Intel SGX Developer Reference
+	 * "Currently, the only valid extended Intel(R) EPID group ID is zero. The
+	 * server should verify this value is zero. If the Intel(R) EPID group ID 
+	 * is not zero, the server aborts remote attestation"
+	 */
+
+	if ( msg0_extended_epid_group_id != 0 ) {
+		mbedtls_printf("msg0 Extended Epid Group ID is not zero.  Exiting.\n");
+		return 0;
+	}
+
+	// Pass msg1 back to the pointer in the caller func
+	// memcpy(msg1, &msg01->msg1, sizeof(sgx_ra_msg1_t));
+	
+	mbedtls_printf("\nMsg1 Details (from Prover)\n");
+	mbedtls_printf("msg1.g_a.gx = %s\n",
+		hexstring(&msg1->g_a.gx, sizeof(msg1->g_a.gx)));
+	mbedtls_printf("msg1.g_a.gy = %s\n",
+		hexstring(&msg1->g_a.gy, sizeof(msg1->g_a.gy)));
+	mbedtls_printf("msg1.gid    = %s\n",
+		hexstring( &msg1->gid, sizeof(msg1->gid)));
+	mbedtls_printf("\n");
+
+	// /* Generate our session key */
+
+	// printf("+++ generating session key Gb\n");
+
+	// Gb= key_generate();
+	// if ( Gb == NULL ) {
+	// 	eprintf("Could not create a session key\n");
+	// 	free(msg01);
+	// 	return 0;
+	// }
+
+	// /*
+	//  * Derive the KDK from the key (Ga) in msg1 and our session key.
+	//  * An application would normally protect the KDK in memory to 
+	//  * prevent trivial inspection.
+	//  */
+
+	// printf("+++ deriving KDK\n");
+
+	// if ( ! derive_kdk(Gb, session->kdk, msg1->g_a, config) ) {
+	// 	printf("Could not derive the KDK\n");
+	// 	free(msg01);
+	// 	return 0;
+	// }
+
+	// printf("+++ KDK = %s\n", hexstring(session->kdk, 16));
+
+	// /*
+ 	//  * Derive the SMK from the KDK 
+	//  * SMK = AES_CMAC(KDK, 0x01 || "SMK" || 0x00 || 0x80 || 0x00) 
+	//  */
+
+	// printf("+++ deriving SMK\n");
+
+	// cmac128(session->kdk, (unsigned char *)("\x01SMK\x00\x80\x00"), 7,
+	// 	session->smk);
+
+	// printf("+++ SMK = %s\n", hexstring(session->smk, 16));
+
+	return 1;
+	}

@@ -3,6 +3,8 @@
 #include "s_server.h"
 #include "Log.h"
 #include "ssl_conn_hdlr.h"
+#include "sgx_key_exchange.h"
+#include "s_client.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -13,6 +15,7 @@ int sgx_accept();
 void ssl_conn_init();
 void ssl_conn_teardown();
 void ssl_conn_handle(long int thread_id, thread_info_t *thread_info);
+int attestation_step1(uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1);
 
 #ifdef __cplusplus
 }
@@ -50,4 +53,8 @@ void ssl_conn_handle(long int thread_id, thread_info_t* thread_info) {
 
 void ssl_conn_teardown(void) {
   delete connectionHandler;
+}
+
+int attestation_step1(uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1){
+  return process_msg01(msg0_extended_epid_group_id, msg1);
 }

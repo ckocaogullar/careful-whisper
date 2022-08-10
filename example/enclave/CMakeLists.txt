@@ -8,6 +8,9 @@ set(SOURCE_FILES
         hexstring.c
         ssl_conn_hdlr.cpp)
 
+
+
+
 add_definitions(-DENCLAVE_STD_ALT)
 
 set_directory_properties(PROPERTIES
@@ -20,6 +23,8 @@ add_custom_command(
 	--search-path ${CMAKE_CURRENT_SOURCE_DIR}
         --search-path ${CMAKE_SOURCE_DIR}/trusted
         COMMENT "Generating Enclave_t.{c,h}")
+
+include_directories(${PROJECT_SOURCE_DIR})
 
 add_library(enclave SHARED ${SOURCE_FILES})
 
@@ -42,7 +47,7 @@ set_target_properties(enclave PROPERTIES PREFIX "")
 target_link_libraries(enclave "${SGX_COMMON_CFLAGS} \
     -Wl,--no-undefined -nostdlib -nodefaultlibs -nostartfiles -L${SGX_LIBRARY_PATH} \
     -Wl,--whole-archive -l${SGX_TRTS_LIB} -Wl,--no-whole-archive \
-    -Wl,--start-group ${MBEDTLS_SGX_LIB_T} -lsgx_tstdc -lsgx_tcxx -lsgx_tcrypto -l${SGX_TSVC_LIB} -Wl,--end-group \
+    -Wl,--start-group ${MBEDTLS_SGX_LIB_T} -lsgx_tstdc -lsgx_tcxx -lsgx_tcrypto -lsgx_tkey_exchange -l${SGX_TSVC_LIB} -Wl,--end-group \
     -Wl,-Bstatic -Wl,-Bsymbolic -Wl,--no-undefined \
     -Wl,-pie,-eenclave_entry -Wl,--export-dynamic \
     -Wl,--defsym,__ImageBase=0")

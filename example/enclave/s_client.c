@@ -60,13 +60,24 @@
 #include "mbedtls/debug.h"
 
 #include "hexstring.h"
-#include "sgx_key_exchange.h"
+#include "sgx_tkey_exchange.h"
 
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+// Modify the following setting values with the correct values
+#define SPID "347A02ABAE509A6E43E376C7250FAE99"
+#define IAS_PRIMARY_SUBSCRIPTION_KEY "a86c71cb05af4c33a7bf9ec34e8ccd64"
+#define IAS_SECONDARY_SUBSCRIPTION_KEY "bc86eeb48ae144d0926d98f74228b8e2"
+#define IAS_REPORT_SIGNING_CA_FILE "Intel_SGX_Attestation_RootCA.pem"
+
+// Modify these for a different policy file, if needed.
+#define MRSIGNER "bd71c6380ef77c5417e8b2d1ce2d4b6504b9f418e5049342440cfff2443d95bd"
+#define PRODID "0"
+#define MIN_ISVSVN "1"
+#define ALLOW_DEBUG "1"
 
 #if defined(MBEDTLS_X509_CRT_PARSE_C)
 #if defined(MBEDTLS_FS_IO)
@@ -236,7 +247,20 @@
  * global options
  */
 
+// sgx_status_t enclave_ra_init(sgx_ec256_public_t key, int b_pse,
+// 	sgx_ra_context_t *ctx, sgx_status_t *pse_status)
+// {
+// 	sgx_status_t ra_status;
 
+// 	/*
+// 	 * If we want platform services, we must create a PSE session 
+// 	 * before calling sgx_ra_init()
+// 	 */
+
+// 	ra_status= sgx_ra_init(&key, 0, ctx);
+
+// 	return ra_status;
+// }
 
 
 static void my_debug( void *ctx, int level,
@@ -1194,7 +1218,7 @@ usage:
           MBEDTLS_SSL_CLI_C && MBEDTLS_NET_C && MBEDTLS_RSA_C &&
           MBEDTLS_CTR_DRBG_C MBEDTLS_TIMING_C */
 
-
+// The first function called by the verifier
 int process_msg01 (uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1)
 {
 	mbedtls_printf("\nMsg0 Details (from Prover)\n");

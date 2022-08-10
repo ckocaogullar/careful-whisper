@@ -23,5 +23,6 @@ if (COMPILE_EXAMPLES)
     add_subdirectory(example)
 endif()
 
+
 message(STATUS "=> SGX_MODE: " ${SGX_MODE})
 message(STATUS "=> SGX_HW: " ${SGX_HW})

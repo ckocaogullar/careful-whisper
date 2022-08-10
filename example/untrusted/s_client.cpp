@@ -1,40 +1,309 @@
 #include <iostream>
 #include <stdio.h>
 #include <sgx_urts.h>
+#include <sgx_uae_service.h>
+#include <sgx_ukey_exchange.h>
 
 #include "Enclave_u.h"
 #include "Utils.h"
+#include "msgio.h"
+#include "hexutil.h"
+#include "crypto.h"
+#include "protocol.h"
+
+#include <unistd.h>
 
 using namespace std;
+
+#define MODE_ATTEST 0x0
 
 /* Global EID shared by multiple threads */
 sgx_enclave_id_t eid = 0;
 
-int main() {
-  int ret;
 
-#if defined(_MSC_VER)
-  if (query_sgx_status() < 0) {
-      cout << "sgx is not support" << endl;
-      ret = -1;
-      goto exit;
-  }
-#endif
 
-  ret = initialize_enclave(&eid);
-  if (ret != 0) {
-    cerr << "failed to initialize the enclave" << endl;
-    exit(-1);
-  }
-  printf("Enclave %lu created\n", eid);
-  sgx_status_t ecall_ret = sgx_connect(eid, &ret);
-  if (ecall_ret != SGX_SUCCESS) {
-    cerr << "ecall failed" << endl;
-    goto exit;
-  }
+typedef struct config_struct
+{
+	char mode;
+	uint32_t flags;
+	sgx_spid_t spid;
+	sgx_ec256_public_t pubkey;
+	sgx_quote_nonce_t nonce;
+	char *server;
+	char *port;
+} config_t;
 
-  exit:
-  sgx_destroy_enclave(eid);
-  printf("Info: all enclave closed successfully.\n");
-  return 0;
+// Flag to be set to 0 if the device is a prover, 1 if verifier
+int prover_verifier_flag = -1;
+
+#define MODE_ATTEST 0x0
+#define MODE_EPID 0x1
+#define MODE_QUOTE 0x2
+
+#define OPT_PSE 0x01
+#define OPT_NONCE 0x02
+#define OPT_LINK 0x04
+#define OPT_PUBKEY 0x08
+
+#define _rdrand64_step(x) ({ unsigned char err; asm volatile("rdrand %0; setc %1":"=r"(*x), "=qm"(err)); err; })
+
+
+
+#define SPID "347A02ABAE509A6E43E376C7250FAE99"
+
+/* Macros to set, clear, and get the mode and options */
+
+#define SET_OPT(x, y) x |= y
+#define CLEAR_OPT(x, y) x = x & ~y
+#define OPT_ISSET(x, y) x &y
+
+#define ENCLAVE_NAME "Enclave.signed.so"
+
+int do_verification(sgx_enclave_id_t eid);
+int do_attestation(sgx_enclave_id_t eid, config_t *config);
+
+int do_verification(sgx_enclave_id_t eid)
+{
+	struct msg01_struct
+	{
+		uint32_t msg0_extended_epid_group_id;
+		sgx_ra_msg1_t msg1;
+	} * msg01;
+	int rv;
+	int *verif_result;
+	MsgIO *msgio;
+	try
+	{
+		msgio = new MsgIO(NULL, DEFAULT_PORT);
+	}
+	catch (...)
+	{
+		exit(1);
+	}
+
+	while (msgio->server_loop())
+	{
+		fprintf(stderr, "Waiting for msg0||msg1\n");
+
+		rv = msgio->read((void **)&msg01, NULL);
+		if (rv == -1)
+		{
+			printf("system error reading msg0||msg1\n");
+			return 0;
+		}
+		else if (rv == 0)
+		{
+			printf("protocol error reading msg0||msg1\n");
+			return 0;
+		}
+
+		printf("Msg0 Details (from Client)\n");
+		printf("msg0.extended_epid_group_id = %u\n",
+				msg01->msg0_extended_epid_group_id);
+		printf("\n");
+	
+		attestation_step1(eid, verif_result, msg01->msg0_extended_epid_group_id, &msg01->msg1);
+	}
+}
+
+int do_attestation(sgx_enclave_id_t eid, config_t *config)
+{
+	sgx_status_t status, sgxrv, pse_status;
+	sgx_ra_msg1_t msg1;
+	sgx_ra_msg2_t *msg2 = NULL;
+	sgx_ra_msg3_t *msg3 = NULL;
+	ra_msg4_t *msg4 = NULL;
+	uint32_t msg0_extended_epid_group_id = 0;
+	uint32_t msg3_sz;
+	uint32_t flags = config->flags;
+	sgx_ra_context_t ra_ctx = 0xdeadbeef;
+	int rv;
+	MsgIO *msgio;
+	size_t msg4sz = 0;
+	int enclaveTrusted = NotTrusted; // Not Trusted
+	int b_pse = OPT_ISSET(flags, OPT_PSE);
+
+	if (config->server == NULL)
+	{
+		msgio = new MsgIO();
+	}
+	else
+	{
+		try
+		{
+			msgio = new MsgIO(config->server, (config->port == NULL) ? DEFAULT_PORT : config->port);
+		}
+		catch (...)
+		{
+			exit(1);
+		}
+	}
+
+	/*
+	 * WARNING! Normally, the public key would be hardcoded into the
+	 * enclave, not passed in as a parameter. Hardcoding prevents
+	 * the enclave using an unauthorized key.
+	 *
+	 * This is diagnostic/test application, however, so we have
+	 * the flexibility of a dynamically assigned key.
+	 */
+
+	/* Executes an ECALL that runs sgx_ra_init() */
+
+
+	/* Generate msg0 */
+
+	status = sgx_get_extended_epid_group_id(&msg0_extended_epid_group_id);
+	if (status != SGX_SUCCESS)
+	{
+		sgx_destroy_enclave(eid);
+		fprintf(stderr, "sgx_get_extended_epid_group_id: %08x\n", status);
+		delete msgio;
+		return 1;
+	}
+
+		fprintf(stderr, "Msg0 Details");
+		fprintf(stderr, "Extended Epid Group ID: ");
+		print_hexstring(stderr, &msg0_extended_epid_group_id,
+						sizeof(uint32_t));
+		fprintf(stderr, "\n");
+	
+
+	/* Generate msg1 */
+
+	status = sgx_ra_get_msg1(ra_ctx, eid, sgx_ra_get_ga, &msg1);
+	if (status != SGX_SUCCESS)
+	{
+		sgx_destroy_enclave(eid);
+		fprintf(stderr, "sgx_ra_get_msg1: %08x\n", status);
+		delete msgio;
+		return 1;
+	}
+
+
+		fprintf(stderr, "Msg1 Details");
+		fprintf(stderr, "msg1.g_a.gx = ");
+		print_hexstring(stderr, msg1.g_a.gx, 32);
+		fprintf(stderr, "\nmsg1.g_a.gy = ");
+		print_hexstring(stderr, msg1.g_a.gy, 32);
+		fprintf(stderr, "\nmsg1.gid    = ");
+		print_hexstring(stderr, msg1.gid, 4);
+		fprintf(stderr, "\n");
+	
+
+	/*
+	 * Send msg0 and msg1 concatenated together (msg0||msg1). We do
+	 * this for efficiency, to eliminate an additional round-trip
+	 * between client and server. The assumption here is that most
+	 * clients have the correct extended_epid_group_id so it's
+	 * a waste to send msg0 separately when the probability of a
+	 * rejection is astronomically small.
+	 *
+	 * If it /is/ rejected, then the client has only wasted a tiny
+	 * amount of time generating keys that won't be used.
+	 */
+
+	fprintf(stderr, "Copy/Paste Msg0||Msg1 Below to SP");
+	msgio->send_partial(&msg0_extended_epid_group_id,
+						sizeof(msg0_extended_epid_group_id));
+	msgio->send(&msg1, sizeof(msg1));
+
+	fprintf(stderr, "Waiting for msg2 here.\n");
+	return 1;
+}
+
+int main(int argc, char **argv)
+{
+// int ret;
+
+// 	ret = initialize_enclave(&eid);
+// 	if (ret != 0)
+// 	{
+// 		cerr << "failed to initialize the enclave" << endl;
+// 		exit(-1);
+// 	}
+// 	printf("Enclave %lu created\n", eid);
+// 	// sgx_status_t ecall_ret = sgx_connect(eid, &ret);
+// 	// if (ecall_ret != SGX_SUCCESS) {
+// 	//   cerr << "ecall failed" << endl;
+// 	//   goto exit;
+// 	// }
+
+	int opt;
+	config_t config;
+	sgx_launch_token_t token = {0};
+	sgx_status_t status;
+	sgx_enclave_id_t eid = 0;
+	int updated = 0;
+	int sgx_support;
+	uint32_t i;
+	EVP_PKEY *service_public_key = NULL;
+	char have_spid = 0;
+	char flag_stdio = 0;
+
+	memset(&config, 0, sizeof(config));
+	config.mode = MODE_ATTEST;
+
+
+		if (!from_hexstring((unsigned char *)&config.spid,
+							(unsigned char *)SPID, 16))
+		{
+
+			fprintf(stderr, "SPID must be 32-byte hex string\n");
+			exit(1);
+		}
+
+		for (i = 0; i < 2; ++i)
+		{
+			int retry = 10;
+			unsigned char ok = 0;
+			uint64_t *np = (uint64_t *)&config.nonce;
+
+			while (!ok && retry)
+				ok = _rdrand64_step(&np[i]);
+			if (ok == 0)
+			{
+				fprintf(stderr, "nonce: RDRAND underflow\n");
+				exit(1);
+			}
+		}
+		SET_OPT(config.flags, OPT_NONCE);
+
+		SET_OPT(config.flags, OPT_PSE);
+	
+		SET_OPT(config.flags, OPT_LINK);
+
+
+		// Set the server and the port
+		config.server = strdup("localhost");
+		config.port = "7777";
+
+		// Launch the enclave
+		int ret;
+		ret = initialize_enclave(&eid);
+		if (ret != 0)
+		{
+			cerr << "failed to initialize the enclave" << endl;
+			exit(-1);
+		}
+		printf("Enclave %lu created\n", eid);
+
+	    while ((opt = getopt(argc, argv, "pv")) != -1) {
+    	    switch (opt) {
+        	case 'p': do_attestation(eid, &config); break;
+        	case 'v': do_verification(eid); break;
+	        default:
+    	        fprintf(stderr, "Usage: %s [-p] for prover, [-v] for verifier.\n", argv[0]);
+        	    exit(EXIT_FAILURE);
+        }
+    }
+
+	return 0;
+
+
+
+exit:
+	sgx_destroy_enclave(eid);
+	printf("Info: all enclave closed successfully.\n");
+	return 0;
 }

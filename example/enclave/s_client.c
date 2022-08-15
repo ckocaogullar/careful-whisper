@@ -61,6 +61,8 @@
 
 #include "hexstring.h"
 #include "sgx_tkey_exchange.h"
+#include "sgx_tcrypto.h"
+#include "sgx_quote.h"
 
 
 #include <stdio.h>
@@ -78,6 +80,8 @@
 #define PRODID "0"
 #define MIN_ISVSVN "1"
 #define ALLOW_DEBUG "1"
+
+
 
 static const sgx_ec256_public_t def_service_public_key = {
     {
@@ -342,6 +346,44 @@ static int my_verify( void *data, mbedtls_x509_crt *crt, int depth, uint32_t *fl
     return( 0 );
 }
 #endif /* MBEDTLS_X509_CRT_PARSE_C */
+
+uint8_t* datahex(char* string) {
+
+    if(string == NULL) 
+       return NULL;
+
+    size_t slength = strlen(string);
+    if((slength % 2) != 0) // must be even
+       return NULL;
+
+    size_t dlength = slength / 2;
+
+    uint8_t* data = malloc(dlength);
+    memset(data, 0, dlength);
+
+    size_t index = 0;
+    while (index < slength) {
+        char c = string[index];
+        int value = 0;
+        if(c >= '0' && c <= '9')
+          value = (c - '0');
+        else if (c >= 'A' && c <= 'F') 
+          value = (10 + (c - 'A'));
+        else if (c >= 'a' && c <= 'f')
+          value = (10 + (c - 'a'));
+        else {
+          free(data);
+          return NULL;
+        }
+
+        data[(index/2)] += value << (((index + 1) % 2) * 4);
+
+        index++;
+    }
+
+    return data;
+}
+
 
 int ssl_client(client_opt_t opt, char* headers[], int n_header, unsigned char* output, int length)
 {
@@ -1254,42 +1296,110 @@ int process_msg01 (uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1)
 
 	// /* Generate our session key */
 
-	// printf("+++ generating session key Gb\n");
+    // Generate a random EC key using the P-256 curve. This key will become Gb.
+    mbedtls_printf("+++ generating session key Gb\n");
+    sgx_ecc_state_handle_t p_ecc_handle;
+    sgx_ec256_private_t p_private;
+    sgx_ec256_public_t p_public;
+    sgx_ec256_dh_shared_t p_shared_key;
+    sgx_status_t status;
+    // unsigned char cmackey[16];
+    sgx_cmac_128bit_key_t cmackey;
+    sgx_cmac_128bit_tag_t kdk;
+    sgx_cmac_128bit_tag_t smk;
 
-	// Gb= key_generate();
-	// if ( Gb == NULL ) {
-	// 	eprintf("Could not create a session key\n");
-	// 	free(msg01);
-	// 	return 0;
-	// }
+	memset(cmackey, 0, 16);
 
-	// /*
-	//  * Derive the KDK from the key (Ga) in msg1 and our session key.
-	//  * An application would normally protect the KDK in memory to 
-	//  * prevent trivial inspection.
-	//  */
+    status = sgx_ecc256_open_context(&p_ecc_handle);
+    if(status != SGX_SUCCESS){
+        mbedtls_printf("Error in sgx_ecc256_open_context %d\n", status);
+        return 1;
+    }
+    status = sgx_ecc256_create_key_pair(&p_private, &p_public, p_ecc_handle);
+    if(status != SGX_SUCCESS){
+        mbedtls_printf("Error in sgx_ecc256_create_key_pair %d\n", status);
+        return 1;
+    }
 
-	// printf("+++ deriving KDK\n");
+    // Derive the key derivation key (KDK) from Ga and Gb:
+    //     Compute the shared secret using the client's public session key, Ga, and the service provider's private session key (obtained from Step 1), Gb. The result of this operation will be the x coordinate of Gab, denoted as Gabx.
+    //     This function returns the shared key in little-endian order, which is the desired outcome.
+    mbedtls_printf("+++ generating KDK Gb\n");
+    status = sgx_ecc256_compute_shared_dhkey(&p_private, &msg1->g_a, &p_shared_key, p_ecc_handle);
+    if(status != SGX_SUCCESS){
+        mbedtls_printf("Error in sgx_ecc256_compute_shared_dhkey %d\n", status);
+        return 1;
+    }
+    mbedtls_printf("Shared DH key    = %s\n",
+		hexstring( &p_shared_key, sizeof(p_shared_key)));
 
-	// if ( ! derive_kdk(Gb, session->kdk, msg1->g_a, config) ) {
-	// 	printf("Could not derive the KDK\n");
-	// 	free(msg01);
-	// 	return 0;
-	// }
+    //     Perform an AES-128 CMAC on the little-endian form of Gabx using a block of 0x00 bytes for the key.
+    status = sgx_rijndael128_cmac_msg(&cmackey, &p_shared_key, sizeof(&p_shared_key), &kdk);
+    if(status != SGX_SUCCESS){
+        mbedtls_printf("Error in KDK generatrion %d\n", status);
+        return 1;
+    }
+    mbedtls_printf("KDK    = %s\n", hexstring( &kdk, sizeof(kdk)));
 
-	// printf("+++ KDK = %s\n", hexstring(session->kdk, 16));
+    // Derive the SMK from the KDK by performing an AES-128 CMAC on the byte sequence:
+    // 0x01 || SMK || 0x00 || 0x80 || 0x00
+    sgx_rijndael128_cmac_msg(&kdk, (unsigned char *)("\x01SMK\x00\x80\x00"), 7, &smk);
+    if(status != SGX_SUCCESS){
+        mbedtls_printf("Error in SMK generation %d\n", status);
+        return 1;
+    }
+    mbedtls_printf("SMK    = %s\n", hexstring( &smk, sizeof(smk)));
 
-	// /*
- 	//  * Derive the SMK from the KDK 
-	//  * SMK = AES_CMAC(KDK, 0x01 || "SMK" || 0x00 || 0x80 || 0x00) 
-	//  */
+    /*
+	 * Build message 2
+	 *
+	 * A || CMACsmk(A) || SigRL
+	 * (148 + 16 + SigRL_length bytes = 164 + SigRL_length bytes)
+	 *
+	 * where:
+	 *
+	 * A      = Gb || SPID || TYPE || KDF-ID || SigSP(Gb, Ga) 
+	 *          (64 + 16 + 2 + 2 + 64 = 148 bytes)
+	 * Ga     = Client enclave's session key
+	 *          (32 bytes)
+	 * Gb     = Service Provider's session key
+	 *          (32 bytes)
+	 * SPID   = The Service Provider ID, issued by Intel to the vendor
+	 *          (16 bytes)
+	 * TYPE   = Quote type (0= linkable, 1= linkable)
+	 *          (2 bytes)
+	 * KDF-ID = (0x0001= CMAC entropy extraction and key derivation)
+	 *          (2 bytes)
+	 * SigSP  = ECDSA signature of (Gb.x || Gb.y || Ga.x || Ga.y) as r || s
+	 *          (signed with the Service Provider's private key)
+	 *          (64 bytes)
+	 *
+	 * CMACsmk= AES-128-CMAC(A)
+	 *          (16 bytes)
+	 * 
+	 * || denotes concatenation
+	 *
+	 * Note that all key components (Ga.x, etc.) are in little endian 
+	 * format, meaning the byte streams need to be reversed.
+	 *
+	 * For SigRL, send:
+	 *
+	 *  SigRL_size || SigRL_contents
+	 *
+	 * where sigRL_size is a 32-bit uint (4 bytes). This matches the
+	 * structure definition in sgx_ra_msg2_t
+	 */
 
-	// printf("+++ deriving SMK\n");
+    sgx_ra_msg2_t msg2;
+    memcpy(msg2.spid.id, datahex(SPID), 16);
+    msg2.quote_type = SGX_UNLINKABLE_SIGNATURE;
+	msg2.kdf_id = 1;
+    msg2.g_b = p_public;
+    mbedtls_printf("SPID inside the enclave is ");
+    for (int i = 0; i < 16; ++i)
+        mbedtls_printf("%d", msg2.spid.id[i]);
+    mbedtls_printf("\n");
 
-	// cmac128(session->kdk, (unsigned char *)("\x01SMK\x00\x80\x00"), 7,
-	// 	session->smk);
-
-	// printf("+++ SMK = %s\n", hexstring(session->smk, 16));
-
+    
 	return 1;
 	}

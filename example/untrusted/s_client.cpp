@@ -55,11 +55,11 @@ int prover_verifier_flag = -1;
 
 #define DEF_LIB_SEARCHPATH "/lib:/lib64:/usr/lib:/usr/lib64"
 
+#define SPID "347A02ABAE509A6E43E376C7250FAE99"
+
 #define _rdrand64_step(x) ({ unsigned char err; asm volatile("rdrand %0; setc %1":"=r"(*x), "=qm"(err)); err; })
 
 
-
-#define SPID "347A02ABAE509A6E43E376C7250FAE99"
 
 /* Macros to set, clear, and get the mode and options */
 
@@ -226,6 +226,7 @@ int do_verification(sgx_enclave_id_t eid)
 		printf("msg0.extended_epid_group_id = %u\n",
 				msg01->msg0_extended_epid_group_id);
 		printf("\n");
+
 	
 		attestation_step1(eid, verif_result, msg01->msg0_extended_epid_group_id, &msg01->msg1);
 	}
@@ -367,7 +368,7 @@ int do_attestation(sgx_enclave_id_t eid, config_t *config)
 	msgio->send(&msg1, sizeof(msg1));
 
 	fprintf(stderr, "Waiting for msg2 here.\n");
-
+	return 1;
 }
 
 int main(int argc, char **argv)
@@ -396,20 +397,12 @@ int ret;
 	int sgx_support;
 	uint32_t i;
 	EVP_PKEY *service_public_key = NULL;
-	char have_spid = 0;
 	char flag_stdio = 0;
 
 	memset(&config, 0, sizeof(config));
 	config.mode = MODE_ATTEST;
 
 
-		if (!from_hexstring((unsigned char *)&config.spid,
-							(unsigned char *)SPID, 16))
-		{
-
-			fprintf(stderr, "SPID must be 32-byte hex string\n");
-			exit(1);
-		}
 
 		for (i = 0; i < 2; ++i)
 		{

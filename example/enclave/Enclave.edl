@@ -14,6 +14,9 @@ enclave {
         public void ssl_conn_teardown(void);
         public void ssl_conn_handle(long int thread_id, [in,out] thread_info_t* thread_info);
         public int attestation_step1(uint32_t msg0_extended_epid_group_id, [in] sgx_ra_msg1_t *msg1);
+        public sgx_status_t enclave_ra_init_def(int b_pse, [out] sgx_ra_context_t *ctx, [out] sgx_status_t *pse_status);
+        public sgx_status_t enclave_ra_init(sgx_ec256_public_t key, int b_pse, [out] sgx_ra_context_t *ctx, [out] sgx_status_t *pse_status);
+        public sgx_status_t enclave_ra_close(sgx_ra_context_t ctx);
 
     };
 

@@ -1,8 +1,14 @@
+// This programme is written by Ceren Kocaogullar in July - Sept 2022 as part of Arm Veracruz project
+// This is a fork of https://github.com/ffosilva/mbedtls-compat-sgx
+// A considerable amount of code and logic is adopted from the Intel-provided remote attesation code https://github.com/intel/sgx-ra-sample.
+// Explanation of this code can be found at: https://www.intel.com/content/www/us/en/developer/articles/code-sample/software-guard-extensions-remote-attestation-end-to-end-example.html
+
 #include <iostream>
 #include <stdio.h>
 #include <sgx_urts.h>
 #include <sgx_uae_service.h>
 #include <sgx_ukey_exchange.h>
+#include <sgx_error.h>
 
 #include "Enclave_u.h"
 #include "Utils.h"
@@ -10,6 +16,7 @@
 #include "hexutil.h"
 #include "crypto.h"
 #include "protocol.h"
+#include <sys/stat.h>
 
 #include <unistd.h>
 
@@ -19,7 +26,6 @@ using namespace std;
 
 /* Global EID shared by multiple threads */
 sgx_enclave_id_t eid = 0;
-
 
 
 typedef struct config_struct
@@ -33,6 +39,8 @@ typedef struct config_struct
 	char *port;
 } config_t;
 
+
+
 // Flag to be set to 0 if the device is a prover, 1 if verifier
 int prover_verifier_flag = -1;
 
@@ -44,6 +52,8 @@ int prover_verifier_flag = -1;
 #define OPT_NONCE 0x02
 #define OPT_LINK 0x04
 #define OPT_PUBKEY 0x08
+
+#define DEF_LIB_SEARCHPATH "/lib:/lib64:/usr/lib:/usr/lib64"
 
 #define _rdrand64_step(x) ({ unsigned char err; asm volatile("rdrand %0; setc %1":"=r"(*x), "=qm"(err)); err; })
 
@@ -57,11 +67,126 @@ int prover_verifier_flag = -1;
 #define CLEAR_OPT(x, y) x = x & ~y
 #define OPT_ISSET(x, y) x &y
 
-#define ENCLAVE_NAME "Enclave.signed.so"
+#define ENCLAVE_NAME "enclave.signed.so"
 
 int do_verification(sgx_enclave_id_t eid);
 int do_attestation(sgx_enclave_id_t eid, config_t *config);
+int file_in_searchpath(const char *file, const char *search, char *fullpath,
+					   size_t len);
+sgx_status_t sgx_create_enclave_search(
+	const char *filename,
+	const int edebug,
+	sgx_launch_token_t *token,
+	int *updated,
+	sgx_enclave_id_t *eid,
+	sgx_misc_attribute_t *attr);
 
+
+int file_in_searchpath(const char *file, const char *search, char *fullpath,
+					   size_t len)
+{
+	char *p, *str;
+	size_t rem;
+	struct stat sb;
+
+	if (search == NULL)
+		return 0;
+	if (strlen(search) == 0)
+		return 0;
+
+	str = strdup(search);
+	if (str == NULL)
+		return 0;
+
+	p = strtok(str, ":");
+	while (p != NULL)
+	{
+		size_t lp = strlen(p);
+
+		if (lp)
+		{
+
+			strncpy(fullpath, p, len - 1);
+			rem = (len - 1) - lp - 1;
+			fullpath[len - 1] = 0;
+
+			strncat(fullpath, "/", rem);
+			--rem;
+
+			strncat(fullpath, file, rem);
+
+			if (stat(fullpath, &sb) == 0)
+			{
+				free(str);
+				return 1;
+			}
+		}
+
+		p = strtok(NULL, ":");
+	}
+
+	free(str);
+
+	return 0;
+}
+
+
+sgx_status_t sgx_create_enclave_search(const char *filename, const int edebug,
+									   sgx_launch_token_t *token, int *updated, sgx_enclave_id_t *eid,
+									   sgx_misc_attribute_t *attr)
+{
+	struct stat sb;
+	char epath[PATH_MAX]; /* includes NULL */
+
+	/* Is filename an absolute path? */
+
+	if (filename[0] == '/'){
+		fprintf(stderr, "Found enclave in absolute path\n");
+		return sgx_create_enclave(filename, edebug, token, updated, eid, attr);
+	}
+
+	/* Is the enclave in the current working directory? */
+
+	if (stat(filename, &sb) == 0){
+		fprintf(stderr, "Found enclave in the current working directory\n");
+		return sgx_create_enclave(filename, edebug, token, updated, eid, attr);
+	}
+
+	/* Search the paths in LD_LBRARY_PATH */
+
+	if (file_in_searchpath(filename, getenv("LD_LIBRARY_PATH"), epath, PATH_MAX)){
+		fprintf(stderr, "Found enclave in LD_LIBRARY_PATH\n");
+		return sgx_create_enclave(epath, edebug, token, updated, eid, attr);
+
+	}
+
+	/* Search the paths in DT_RUNPATH */
+
+	if (file_in_searchpath(filename, getenv("DT_RUNPATH"), epath, PATH_MAX)){
+		fprintf(stderr, "Found enclave in DT_RUNPATH\n");
+		return sgx_create_enclave(epath, edebug, token, updated, eid, attr);
+	}
+
+	/* Standard system library paths */
+
+	if (file_in_searchpath(filename, DEF_LIB_SEARCHPATH, epath, PATH_MAX)){
+		fprintf(stderr, "Found enclave in standard system library paths\n");
+		return sgx_create_enclave(epath, edebug, token, updated, eid, attr);
+	}
+
+	/*
+	 * If we've made it this far then we don't know where else to look.
+	 * Just call sgx_create_enclave() which assumes the enclave is in
+	 * the current working directory. This is almost guaranteed to fail,
+	 * but it will insure we are consistent about the error codes that
+	 * get reported to the calling function.
+	 */
+	fprintf(stderr, "Could not find enclave anywhere, don't know where else to look.\n");
+	return sgx_create_enclave(filename, edebug, token, updated, eid, attr);
+}
+
+// Verification part of the process normally happens in the service provider, not using any enclaves
+// 
 int do_verification(sgx_enclave_id_t eid)
 {
 	struct msg01_struct
@@ -106,6 +231,9 @@ int do_verification(sgx_enclave_id_t eid)
 	}
 }
 
+// Attestation side of the process normally happens in the client 
+// application and the enclave, therefore there is no real 
+// need to change the existing RA code in sgx-ra-sample
 int do_attestation(sgx_enclave_id_t eid, config_t *config)
 {
 	sgx_status_t status, sgxrv, pse_status;
@@ -150,13 +278,42 @@ int do_attestation(sgx_enclave_id_t eid, config_t *config)
 
 	/* Executes an ECALL that runs sgx_ra_init() */
 
+	if (OPT_ISSET(flags, OPT_PUBKEY))
+	{
+
+			fprintf(stderr, "+++ using supplied public key\n");
+		status = enclave_ra_init(eid, &sgxrv, config->pubkey, b_pse,
+								 &ra_ctx, &pse_status);
+	}
+	else
+	{
+			fprintf(stderr, "+++ using default public key\n");
+		status = enclave_ra_init_def(eid, &sgxrv, b_pse, &ra_ctx,
+									 &pse_status);
+	}
+
+	/* Did the ECALL succeed? */
+	if (status != SGX_SUCCESS)
+	{
+		fprintf(stderr, "enclave_ra_init: %08x\n", status);
+		delete msgio;
+		return 1;
+	}
+
+	/* Did sgx_ra_init() succeed? */
+	if (sgxrv != SGX_SUCCESS)
+	{
+		fprintf(stderr, "sgx_ra_init: %08x\n", sgxrv);
+		delete msgio;
+		return 1;
+	}
 
 	/* Generate msg0 */
 
 	status = sgx_get_extended_epid_group_id(&msg0_extended_epid_group_id);
 	if (status != SGX_SUCCESS)
 	{
-		sgx_destroy_enclave(eid);
+		enclave_ra_close(eid, &sgxrv, ra_ctx);
 		fprintf(stderr, "sgx_get_extended_epid_group_id: %08x\n", status);
 		delete msgio;
 		return 1;
@@ -174,13 +331,13 @@ int do_attestation(sgx_enclave_id_t eid, config_t *config)
 	status = sgx_ra_get_msg1(ra_ctx, eid, sgx_ra_get_ga, &msg1);
 	if (status != SGX_SUCCESS)
 	{
-		sgx_destroy_enclave(eid);
+		enclave_ra_close(eid, &sgxrv, ra_ctx);
 		fprintf(stderr, "sgx_ra_get_msg1: %08x\n", status);
 		delete msgio;
 		return 1;
 	}
 
-
+ 
 		fprintf(stderr, "Msg1 Details");
 		fprintf(stderr, "msg1.g_a.gx = ");
 		print_hexstring(stderr, msg1.g_a.gx, 32);
@@ -203,18 +360,19 @@ int do_attestation(sgx_enclave_id_t eid, config_t *config)
 	 * amount of time generating keys that won't be used.
 	 */
 
+
 	fprintf(stderr, "Copy/Paste Msg0||Msg1 Below to SP");
 	msgio->send_partial(&msg0_extended_epid_group_id,
 						sizeof(msg0_extended_epid_group_id));
 	msgio->send(&msg1, sizeof(msg1));
 
 	fprintf(stderr, "Waiting for msg2 here.\n");
-	return 1;
+
 }
 
 int main(int argc, char **argv)
 {
-// int ret;
+int ret;
 
 // 	ret = initialize_enclave(&eid);
 // 	if (ret != 0)
@@ -223,7 +381,7 @@ int main(int argc, char **argv)
 // 		exit(-1);
 // 	}
 // 	printf("Enclave %lu created\n", eid);
-// 	// sgx_status_t ecall_ret = sgx_connect(eid, &ret);
+// sgx_status_t ecall_ret = sgx_connect(eid, &ret);
 // 	// if (ecall_ret != SGX_SUCCESS) {
 // 	//   cerr << "ecall failed" << endl;
 // 	//   goto exit;
@@ -278,15 +436,18 @@ int main(int argc, char **argv)
 		config.server = strdup("localhost");
 		config.port = "7777";
 
+
 		// Launch the enclave
-		int ret;
-		ret = initialize_enclave(&eid);
-		if (ret != 0)
+		status = sgx_create_enclave_search(ENCLAVE_NAME,
+									   SGX_DEBUG_FLAG, &token, &updated, &eid, 0);
+		if (status != SGX_SUCCESS)
 		{
-			cerr << "failed to initialize the enclave" << endl;
-			exit(-1);
+			fprintf(stderr, "sgx_create_enclave: %s: %08x\n",
+					ENCLAVE_NAME, status);
+			if (status == SGX_ERROR_ENCLAVE_FILE_ACCESS)
+				fprintf(stderr, "Did you forget to set LD_LIBRARY_PATH?\n");
+			return 1;
 		}
-		printf("Enclave %lu created\n", eid);
 
 	    while ((opt = getopt(argc, argv, "pv")) != -1) {
     	    switch (opt) {

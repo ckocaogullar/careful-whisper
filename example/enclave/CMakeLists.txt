@@ -47,7 +47,7 @@ set_target_properties(enclave PROPERTIES PREFIX "")
 target_link_libraries(enclave "${SGX_COMMON_CFLAGS} \
     -Wl,--no-undefined -nostdlib -nodefaultlibs -nostartfiles -L${SGX_LIBRARY_PATH} \
     -Wl,--whole-archive -l${SGX_TRTS_LIB} -Wl,--no-whole-archive \
-    -Wl,--start-group ${MBEDTLS_SGX_LIB_T} -lsgx_tstdc -lsgx_tcxx -lsgx_tcrypto -lsgx_tkey_exchange -l${SGX_TSVC_LIB} -Wl,--end-group \
+    -Wl,--start-group ${MBEDTLS_SGX_LIB_T} -lsgx_tstdc -lsgx_tcxx -lsgx_tcrypto -lsgx_tkey_exchange /home/cerkoc01/Workspace/careful-whisper/libsgx_uae_service.so -l${SGX_TSVC_LIB} -Wl,--end-group \
     -Wl,-Bstatic -Wl,-Bsymbolic -Wl,--no-undefined \
     -Wl,-pie,-eenclave_entry -Wl,--export-dynamic \
     -Wl,--defsym,__ImageBase=0")

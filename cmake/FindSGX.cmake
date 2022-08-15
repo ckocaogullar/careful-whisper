@@ -43,6 +43,7 @@ if(SGX_INCLUDE_DIR AND SGX_LIBRARY_DIR)
     mark_as_advanced(SGX_INCLUDE_DIR SGX_TLIBC_INCLUDE_DIR SGX_LIBCXX_INCLUDE_DIR SGX_LIBRARY_DIR)
     message(STATUS "Found Intel SGX SDK.")
     message(STATUS "${SGX_PATH}/include")
+    message(STATUS "SGX library path is ${SGX_LIBRARY_PATH}")
 endif()
 
 if(SGX_FOUND)

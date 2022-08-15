@@ -18,6 +18,7 @@ add_custom_command(
         COMMAND ${SGX_EDGER8R} --untrusted Enclave.edl
         --search-path ${CMAKE_CURRENT_SOURCE_DIR}/../enclave/ # enclave.edl
         --search-path ${SGX_PATH}/include
+        --search-path ${SGX_LIBRARY_PATH}
         --search-path ${CMAKE_SOURCE_DIR}/trusted # mbedtls_sgx.edl
         --search-path /usr/lib/x86_64-linux-gnu/ # libssl.so
         COMMENT "Generating Enclave_u.{c,h}"
@@ -39,8 +40,8 @@ include_directories(
 )
 
 target_link_libraries(s_client
-        -L${SGX_LIBRARY_PATH} -l${SGX_URTS_LIB} -l${SGX_USVC_LIB}
-        ${MBEDTLS_SGX_LIB_U} -lpthread -l:libsgx_ukey_exchange.a -lsgx_tkey_exchange -l:libssl.so -l:libcrypto.so)
+        -L${SGX_LIBRARY_PATH} /home/cerkoc01/Workspace/careful-whisper/libsgx_uae_service.so -l${SGX_URTS_LIB} -l${SGX_USVC_LIB}
+        ${MBEDTLS_SGX_LIB_U} -lpthread -l:libsgx_ukey_exchange.a -lsgx_tkey_exchange -l:libssl.so -l:libcrypto.so )
 
 target_link_libraries(s_server
         -L${SGX_LIBRARY_PATH} -l${SGX_URTS_LIB} -l${SGX_USVC_LIB}

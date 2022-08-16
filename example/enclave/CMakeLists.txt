@@ -6,6 +6,7 @@ set(SOURCE_FILES
         s_client.c
         s_server.c
         hexstring.c
+        ${PROJECT_SOURCE_DIR}/picohttpparser/picohttpparser.c
         ssl_conn_hdlr.cpp)
 
 

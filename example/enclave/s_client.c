@@ -63,6 +63,7 @@
 #include "sgx_tkey_exchange.h"
 #include "sgx_tcrypto.h"
 #include "sgx_quote.h"
+#include "picohttpparser/picohttpparser.h"
 
 
 #include <stdio.h>
@@ -1400,6 +1401,44 @@ int process_msg01 (uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1)
         mbedtls_printf("%d", msg2.spid.id[i]);
     mbedtls_printf("\n");
 
+    client_opt_t opt;
+    unsigned char buf[1024];
+    client_opt_init(&opt);
+    opt.debug_level = 1;
+    opt.server_addr = "api.trustedservices.intel.com";
+    opt.request_page = "/sgx/dev/attestation/v4/sigrl/00000c1f HTTP/1.1";
+    char* header[2]; 
+    header[0] = "Host: api.trustedservices.intel.com";
+    header[1] = "Ocp-Apim-Subscription-Key: 2f4641eb3f334703adafa46c35556505";
+
+    ssl_client(opt, header, 2, buf, sizeof buf);
+
     
+    int minor_version;
+    int stat;
+    const char *msg;
+    size_t msg_len;
+    struct phr_header headers[4];
+    size_t num_headers;
+    static char *inputbuf; /* point to the end of the buffer */
+
+                                                                                                      
+    size_t slen = sizeof(buf) - 1;                                                                                                                                                                                                           
+    num_headers = sizeof(headers) / sizeof(headers[0]);     
+
+    // memcpy(inputbuf - slen, buf, slen); 
+    mbedtls_printf("Im here \n");
+
+    mbedtls_printf("Now I am gonna parse\n");                                                                                       
+    phr_parse_response(&buf, slen, &minor_version, &stat, &msg, &msg_len, headers, &num_headers, 0);                                                                                          
+   
+    mbedtls_printf("msg is %.*s\n", (int)msg_len, msg);
+    mbedtls_printf("status is %d\n", stat);
+    mbedtls_printf("headers:\n");
+    for (int i = 0; i != num_headers; ++i) {
+        mbedtls_printf("%.*s: %.*s\n", (int)headers[i].name_len, headers[i].name,
+            (int)headers[i].value_len, headers[i].value);
+    }
+
 	return 1;
 	}

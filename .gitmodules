@@ -1,3 +1,6 @@
 [submodule "trusted/mbedtls"]
 	path = external/mbedtls
 	url = http://github.com/armmbed/mbedtls.git
+[submodule "picohttpparser"]
+	path = picohttpparser
+	url = https://github.com/h2o/picohttpparser.git

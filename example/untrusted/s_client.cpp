@@ -227,8 +227,8 @@ int do_verification(sgx_enclave_id_t eid)
 				msg01->msg0_extended_epid_group_id);
 		printf("\n");
 
-	
-		attestation_step1(eid, verif_result, msg01->msg0_extended_epid_group_id, &msg01->msg1);
+		char *sigrl;
+		attestation_step1(eid, verif_result, msg01->msg0_extended_epid_group_id, &msg01->msg1, &sigrl);
 	}
 }
 

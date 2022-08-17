@@ -1266,8 +1266,9 @@ usage:
 // Parse the HTML response and return the response body
 // Inputs: buf - Raw HTML response
 //         slen - Size of buf
-// Outputs: body - Message body, stripped of the \r and \n characters at the beginning and the end
-int parse_response(char buf[], char body[], size_t slen){
+// Outputs: ret_body - Message body, stripped of the \r and \n characters at the beginning and the end
+//          body_len - Length of the message body
+int parse_response(char buf[], char **ret_body, size_t slen, int *body_len){
     mbedtls_printf("Printing the buf inside\n");
     mbedtls_printf("%s", buf);
     int minor_version;
@@ -1277,14 +1278,11 @@ int parse_response(char buf[], char body[], size_t slen){
     struct phr_header parsed_headers[4];
     size_t num_headers;
     char content_length[1024];
-    // int content_length;
     static char *inputbuf; /* point to the end of the buffer */
     unsigned char c;
-    size_t body_len;
     char *body_start;
     char *body_end;
     mbedtls_printf("Buf length is %d\n", sizeof(buf));                                                                        
-    // size_t slen = sizeof(buf) - 1;                                                                                                                                                                                                           
     num_headers = sizeof(parsed_headers) / sizeof(parsed_headers[0]);     
 
     // Test response
@@ -1299,6 +1297,7 @@ int parse_response(char buf[], char body[], size_t slen){
     mbedtls_printf("status is %d\n", stat);
     mbedtls_printf("headers are:\n");
     char header[1024];
+    char body[1024];
     int i;
     for (i = 0; i != num_headers; ++i) {
         mbedtls_printf("%.*s: %.*s\n", (int)parsed_headers[i].name_len, parsed_headers[i].name,
@@ -1330,7 +1329,10 @@ int parse_response(char buf[], char body[], size_t slen){
         --body_end;
     }
 
-    mbedtls_printf("Here is the body %s\n", body);
+    
+    *body_len = strlen(body);
+    *ret_body = strdup(body);
+    
 }
 
 void substitution(char *str, char c1, char c2)
@@ -1344,7 +1346,7 @@ void substitution(char *str, char c1, char c2)
 
 
 // The first function called by the verifier
-int process_msg01 (uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1)
+int process_msg01 (uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, char **sigrl)
 {
 	mbedtls_printf("\nMsg0 Details (from Prover)\n");
 	mbedtls_printf("msg0.extended_epid_group_id = %u\n",
@@ -1481,6 +1483,7 @@ int process_msg01 (uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1)
         mbedtls_printf("%d", msg2.spid.id[i]);
     mbedtls_printf("\n");
 
+    // Get SigRL from Intel IAS server
     client_opt_t opt;
     char buf[1024];
     client_opt_init(&opt);
@@ -1491,13 +1494,15 @@ int process_msg01 (uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1)
     http_headers[0] = "Host: api.trustedservices.intel.com";
     http_headers[1] = "Ocp-Apim-Subscription-Key: 2f4641eb3f334703adafa46c35556505";
 
+    // Make HTTP request to IAS from inside the enclave
     ssl_client(opt, http_headers, 2, buf, sizeof buf);
 
-    unsigned char body[1024];
-
-    size_t slen = sizeof(buf) - 1;  
-    parse_response(buf, body, slen);
-
-
+    // Parse the response to learn the SigRL
+    size_t slen = sizeof(buf) - 1; 
+    char *test_body; 
+    parse_response(buf, &test_body, slen, &msg2.sig_rl_size);
+    strncpy(*sigrl, test_body, strlen(test_body));
+    mbedtls_printf("SigRL is %s\n", *sigrl);
+    mbedtls_printf("SigRL Length is %d\n", msg2.sig_rl_size);
 	return 1;
 	}

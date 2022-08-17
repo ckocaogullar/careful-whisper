@@ -651,7 +651,6 @@ int ssl_client(client_opt_t opt, char* headers[], int n_header, unsigned char* o
         LL_CRITICAL( "mbedtls_ssl_config_defaults returned -%#x", -ret );
         goto exit;
     }
-    mbedtls_printf("SSL configurations: %s", conf);
 #if defined(MBEDTLS_X509_CRT_PARSE_C)
     if( opt.debug_level > 0 ){
         mbedtls_ssl_conf_verify( &conf, my_verify, NULL );
@@ -1263,6 +1262,87 @@ usage:
           MBEDTLS_SSL_CLI_C && MBEDTLS_NET_C && MBEDTLS_RSA_C &&
           MBEDTLS_CTR_DRBG_C MBEDTLS_TIMING_C */
 
+
+// Parse the HTML response and return the response body
+// Inputs: buf - Raw HTML response
+//         slen - Size of buf
+// Outputs: body - Message body, stripped of the \r and \n characters at the beginning and the end
+int parse_response(char buf[], char body[], size_t slen){
+    mbedtls_printf("Printing the buf inside\n");
+    mbedtls_printf("%s", buf);
+    int minor_version;
+    int stat;
+    const char *msg;
+    size_t msg_len;
+    struct phr_header parsed_headers[4];
+    size_t num_headers;
+    char content_length[1024];
+    // int content_length;
+    static char *inputbuf; /* point to the end of the buffer */
+    unsigned char c;
+    size_t body_len;
+    char *body_start;
+    char *body_end;
+    mbedtls_printf("Buf length is %d\n", sizeof(buf));                                                                        
+    // size_t slen = sizeof(buf) - 1;                                                                                                                                                                                                           
+    num_headers = sizeof(parsed_headers) / sizeof(parsed_headers[0]);     
+
+    // Test response
+    // char *buff = "HTTP/1.1 200 OK\r\nDate: Fri, 31 Dec 1999 23:59:59 GMT\r\nContent-Type: text/plain\r\nContent-Length: 42\r\n\r\nabcdefghijklmnopqrstuvwxyz1234567890abcdef\r\n";
+
+    // Parse the response status, message, and headers                                                                         
+    phr_parse_response(buf, slen, &minor_version, &stat, &msg, &msg_len, parsed_headers, &num_headers, 0);                                                                                          
+   mbedtls_printf("Printing the buf");
+    mbedtls_printf("%s", buf);
+    mbedtls_printf("Buf length is %d\n", slen);
+    mbedtls_printf("msg is %.*s\n", (int)msg_len, msg);
+    mbedtls_printf("status is %d\n", stat);
+    mbedtls_printf("headers are:\n");
+    char header[1024];
+    int i;
+    for (i = 0; i != num_headers; ++i) {
+        mbedtls_printf("%.*s: %.*s\n", (int)parsed_headers[i].name_len, parsed_headers[i].name,
+            (int)parsed_headers[i].value_len, parsed_headers[i].value);
+        strncpy(header, parsed_headers[i].name, parsed_headers[i].name_len);
+        
+        // Find and record the content length
+        if(strcmp(header, "Content-Length") == 0){
+            strncpy(content_length, parsed_headers[i].value, parsed_headers[i].value_len);
+        }
+        memset(header, 0, strlen(header));
+    }
+
+    // Find and record the body, cleaned from the excape characters \r and \n
+    body_start = parsed_headers[num_headers-1].value + parsed_headers[num_headers-1].value_len;
+    
+    while(*body_start == '\r' || *body_start == '\n'){
+        mbedtls_printf("Escape char found at the beginning of the response body %c", *body_start);
+        ++body_start;
+    }
+        
+    strncpy(body, body_start, strlen(body));
+    mbedtls_printf("Body length is %d\n", strlen(body));
+
+    body_end = body + strlen(body)-1;
+    while(*body_end == '\r' || *body_end == '\n'){
+        mbedtls_printf("Escape char found at the end of the response body %c", body[strlen(body)-1]);
+        *body_end = '\0';
+        --body_end;
+    }
+
+    mbedtls_printf("Here is the body %s\n", body);
+}
+
+void substitution(char *str, char c1, char c2)
+{
+  int i;
+  for (i=0; (str[i])!='\0'; ++i)
+    if (c1 == (str[i]))
+      (str[i]) = c2;
+}
+
+
+
 // The first function called by the verifier
 int process_msg01 (uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1)
 {
@@ -1402,43 +1482,22 @@ int process_msg01 (uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1)
     mbedtls_printf("\n");
 
     client_opt_t opt;
-    unsigned char buf[1024];
+    char buf[1024];
     client_opt_init(&opt);
     opt.debug_level = 1;
     opt.server_addr = "api.trustedservices.intel.com";
     opt.request_page = "/sgx/dev/attestation/v4/sigrl/00000c1f HTTP/1.1";
-    char* header[2]; 
-    header[0] = "Host: api.trustedservices.intel.com";
-    header[1] = "Ocp-Apim-Subscription-Key: 2f4641eb3f334703adafa46c35556505";
+    char* http_headers[2]; 
+    http_headers[0] = "Host: api.trustedservices.intel.com";
+    http_headers[1] = "Ocp-Apim-Subscription-Key: 2f4641eb3f334703adafa46c35556505";
 
-    ssl_client(opt, header, 2, buf, sizeof buf);
+    ssl_client(opt, http_headers, 2, buf, sizeof buf);
 
-    
-    int minor_version;
-    int stat;
-    const char *msg;
-    size_t msg_len;
-    struct phr_header headers[4];
-    size_t num_headers;
-    static char *inputbuf; /* point to the end of the buffer */
+    unsigned char body[1024];
 
-                                                                                                      
-    size_t slen = sizeof(buf) - 1;                                                                                                                                                                                                           
-    num_headers = sizeof(headers) / sizeof(headers[0]);     
+    size_t slen = sizeof(buf) - 1;  
+    parse_response(buf, body, slen);
 
-    // memcpy(inputbuf - slen, buf, slen); 
-    mbedtls_printf("Im here \n");
-
-    mbedtls_printf("Now I am gonna parse\n");                                                                                       
-    phr_parse_response(&buf, slen, &minor_version, &stat, &msg, &msg_len, headers, &num_headers, 0);                                                                                          
-   
-    mbedtls_printf("msg is %.*s\n", (int)msg_len, msg);
-    mbedtls_printf("status is %d\n", stat);
-    mbedtls_printf("headers:\n");
-    for (int i = 0; i != num_headers; ++i) {
-        mbedtls_printf("%.*s: %.*s\n", (int)headers[i].name_len, headers[i].name,
-            (int)headers[i].value_len, headers[i].value);
-    }
 
 	return 1;
 	}

@@ -31,7 +31,7 @@ int sgx_accept();
 void ssl_conn_init();
 void ssl_conn_teardown();
 void ssl_conn_handle(long int thread_id, thread_info_t *thread_info);
-int attestation_step1(uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, char **sigrl);
+int attestation_step1(uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, sgx_ra_msg2_t *msg2, char **sigrl);
 sgx_status_t enclave_ra_init_def(int b_pse, sgx_ra_context_t *ctx, sgx_status_t *pse_status);
 sgx_status_t enclave_ra_init(sgx_ec256_public_t key, int b_pse, sgx_ra_context_t *ctx, sgx_status_t *pse_status);
 sgx_status_t enclave_ra_close(sgx_ra_context_t ctx);
@@ -74,8 +74,8 @@ void ssl_conn_teardown(void) {
   delete connectionHandler;
 }
 
-int attestation_step1(uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, char **sigrl){
-  return process_msg01(msg0_extended_epid_group_id, msg1, sigrl);
+int attestation_step1(uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, sgx_ra_msg2_t *msg2, char **sigrl){
+  return process_msg01(msg0_extended_epid_group_id, msg1, msg2, sigrl);
 }
 
 sgx_status_t enclave_ra_init(sgx_ec256_public_t key, int b_pse,

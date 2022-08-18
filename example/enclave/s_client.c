@@ -84,20 +84,11 @@
 
 
 
-static const sgx_ec256_public_t def_service_public_key = {
-    {
-        0x72, 0x12, 0x8a, 0x7a, 0x17, 0x52, 0x6e, 0xbf,
-        0x85, 0xd0, 0x3a, 0x62, 0x37, 0x30, 0xae, 0xad,
-        0x3e, 0x3d, 0xaa, 0xee, 0x9c, 0x60, 0x73, 0x1d,
-        0xb0, 0x5b, 0xe8, 0x62, 0x1c, 0x4b, 0xeb, 0x38
-    },
-    {
-        0xd4, 0x81, 0x40, 0xd9, 0x50, 0xe2, 0x57, 0x7b,
-        0x26, 0xee, 0xb7, 0x41, 0xe7, 0xc6, 0x14, 0xe2,
-        0x24, 0xb7, 0xbd, 0xc9, 0x03, 0xf2, 0x9a, 0x28,
-        0xa8, 0x3c, 0xc8, 0x10, 0x11, 0x14, 0x5e, 0x06
-    }
-
+static const unsigned char def_service_private_key[32] = {
+	0x90, 0xe7, 0x6c, 0xbb, 0x2d, 0x52, 0xa1, 0xce,
+	0x3b, 0x66, 0xde, 0x11, 0x43, 0x9c, 0x87, 0xec,
+	0x1f, 0x86, 0x6a, 0x3b, 0x65, 0xb6, 0xae, 0xea,
+	0xad, 0x57, 0x34, 0x53, 0xd1, 0x03, 0x8c, 0x01
 };
 
 #if defined(MBEDTLS_X509_CRT_PARSE_C)
@@ -1346,14 +1337,14 @@ void substitution(char *str, char c1, char c2)
 
 
 // The first function called by the verifier
-int process_msg01 (uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, char **sigrl)
+int process_msg01 (uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, sgx_ra_msg2_t *msg2, char **sigrl)
 {
 	mbedtls_printf("\nMsg0 Details (from Prover)\n");
 	mbedtls_printf("msg0.extended_epid_group_id = %u\n",
 			msg0_extended_epid_group_id);
 	mbedtls_printf("\n");
 	
-
+    memset(msg2, 0, sizeof(sgx_ra_msg2_t));
 	/* According to the Intel SGX Developer Reference
 	 * "Currently, the only valid extended Intel(R) EPID group ID is zero. The
 	 * server should verify this value is zero. If the Intel(R) EPID group ID 
@@ -1473,15 +1464,13 @@ int process_msg01 (uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, ch
 	 * structure definition in sgx_ra_msg2_t
 	 */
 
-    sgx_ra_msg2_t msg2;
-    memcpy(msg2.spid.id, datahex(SPID), 16);
-    msg2.quote_type = SGX_UNLINKABLE_SIGNATURE;
-	msg2.kdf_id = 1;
-    msg2.g_b = p_public;
-    mbedtls_printf("SPID inside the enclave is ");
-    for (int i = 0; i < 16; ++i)
-        mbedtls_printf("%d", msg2.spid.id[i]);
-    mbedtls_printf("\n");
+    unsigned char gb_ga[128];
+
+    memcpy(&msg2->spid, datahex(SPID), sizeof(sgx_spid_t));
+    msg2->quote_type = (uint16_t) SGX_UNLINKABLE_SIGNATURE;
+	msg2->kdf_id = 1;
+    memcpy(&msg2->g_b, &p_public, sizeof(p_public));
+    // msg2->g_b = p_public;
 
     // Get SigRL from Intel IAS server
     client_opt_t opt;
@@ -1500,9 +1489,68 @@ int process_msg01 (uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, ch
     // Parse the response to learn the SigRL
     size_t slen = sizeof(buf) - 1; 
     char *test_body; 
-    parse_response(buf, &test_body, slen, &msg2.sig_rl_size);
+    parse_response(buf, &test_body, slen, &msg2->sig_rl_size);
     strncpy(*sigrl, test_body, strlen(test_body));
     mbedtls_printf("SigRL is %s\n", *sigrl);
-    mbedtls_printf("SigRL Length is %d\n", msg2.sig_rl_size);
-	return 1;
+    mbedtls_printf("SigRL Length is %d\n", msg2->sig_rl_size);
+	
+
+    // Calculate the ECDSA signature of:
+    // Gbx || Gby || Gax || Gay
+    // (traditionally written as r || s) with the service provider's EC private key
+    memcpy(gb_ga, msg2->g_b.gx, SGX_ECP256_KEY_SIZE);
+    memcpy(&gb_ga[SGX_ECP256_KEY_SIZE], msg2->g_b.gy, SGX_ECP256_KEY_SIZE);
+	memcpy(&gb_ga[2*SGX_ECP256_KEY_SIZE], &msg1->g_a.gx, SGX_ECP256_KEY_SIZE);
+    memcpy(&gb_ga[3*SGX_ECP256_KEY_SIZE], &msg1->g_a.gy, SGX_ECP256_KEY_SIZE);
+
+	mbedtls_printf("+++ msg2->g_b.gx = %s\n", hexstring(msg2->g_b.gx, SGX_ECP256_KEY_SIZE));
+    mbedtls_printf("+++ msg2->g_b.gy = %s\n", hexstring(msg2->g_b.gy, SGX_ECP256_KEY_SIZE));
+    mbedtls_printf("+++ &msg1->g_a.gx = %s\n", hexstring(&msg1->g_a.gx, SGX_ECP256_KEY_SIZE));
+    mbedtls_printf("+++ &msg1->g_a.gy = %s\n", hexstring(&msg1->g_a.gy, SGX_ECP256_KEY_SIZE));
+    mbedtls_printf("+++ gb_ga = %s\n", hexstring(gb_ga, 128));
+
+    sgx_ec256_signature_t signed_gb_ga;
+    sgx_ec256_private_t service_private_key;
+    memcpy(service_private_key.r, def_service_private_key, SGX_ECP256_KEY_SIZE);
+    sgx_ecdsa_sign(&gb_ga, 128, &def_service_private_key, &signed_gb_ga, p_ecc_handle);
+
+    memcpy(msg2->sign_gb_ga.x, signed_gb_ga.x, SGX_NISTP_ECP256_KEY_SIZE);
+    memcpy(msg2->sign_gb_ga.y, signed_gb_ga.y, SGX_NISTP_ECP256_KEY_SIZE);
+
+    mbedtls_printf("+++ r = %s\n", hexstring(signed_gb_ga.x, 32));
+    mbedtls_printf("+++ s = %s\n", hexstring(signed_gb_ga.y, 32));
+
+    // Calculate the AES-128 CMAC of:
+    // Gb || SPID || Quote_Type || KDF_ID || SigSP
+    // using the SMK (derived in Step 3) as the key.
+
+    
+    // cmac128(session->smk, (unsigned char *) msg2, 148,
+	// 	(unsigned char *) &msg2->mac);
+
+    sgx_rijndael128_cmac_msg(&smk, (unsigned char *)&msg2, 148, &msg2->mac);
+
+
+    mbedtls_printf("Msg2 Details\n");
+		mbedtls_printf("msg2->g_b.gx      = %s\n",
+			hexstring(&msg2->g_b.gx, sizeof(msg2->g_b.gx)));
+		mbedtls_printf("msg2->g_b.gy      = %s\n",
+			hexstring(&msg2->g_b.gy, sizeof(msg2->g_b.gy)));
+		mbedtls_printf("msg2->spid        = %s\n",
+			hexstring(&msg2->spid, sizeof(msg2->spid)));
+		mbedtls_printf("msg2->quote_type  = %s\n",
+			hexstring(&msg2->quote_type, sizeof(msg2->quote_type)));
+		mbedtls_printf("msg2->kdf_id      = %s\n",
+			hexstring(&msg2->kdf_id, sizeof(msg2->kdf_id)));
+		mbedtls_printf("msg2->sign_gb_ga.x  = %s\n",
+			hexstring(&msg2->sign_gb_ga.x, sizeof(msg2->sign_gb_ga.x)));
+        mbedtls_printf("msg2->sign_gb_ga.y  = %s\n",
+			hexstring(&msg2->sign_gb_ga.y, sizeof(msg2->sign_gb_ga.y)));
+		mbedtls_printf("msg2->mac         = %s\n",
+			hexstring(&msg2->mac, sizeof(msg2->mac)));
+		mbedtls_printf("msg2->sig_rl_size = %s\n",
+			hexstring(&msg2->sig_rl_size, sizeof(msg2->sig_rl_size)));
+    mbedtls_printf("\n");
+
+    return 1;
 	}

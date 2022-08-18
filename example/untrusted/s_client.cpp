@@ -197,6 +197,7 @@ int do_verification(sgx_enclave_id_t eid)
 	int rv;
 	int *verif_result;
 	MsgIO *msgio;
+	sgx_ra_msg2_t msg2;
 	try
 	{
 		msgio = new MsgIO(NULL, DEFAULT_PORT);
@@ -228,7 +229,52 @@ int do_verification(sgx_enclave_id_t eid)
 		printf("\n");
 
 		char *sigrl;
-		attestation_step1(eid, verif_result, msg01->msg0_extended_epid_group_id, &msg01->msg1, &sigrl);
+		attestation_step1(eid, verif_result, msg01->msg0_extended_epid_group_id, &msg01->msg1, &msg2, &sigrl);
+
+	    free(msg01);
+
+		/* Send message 2 */
+
+		/*
+	 	* sgx_ra_msg2_t is a struct with a flexible array member at the
+	 	* end (defined as uint8_t sig_rl[]). We could go to all the 
+	 	* trouble of building a byte array large enough to hold the
+	 	* entire struct and then cast it as (sgx_ra_msg2_t) but that's
+	 	* a lot of work for no gain when we can just send the fixed 
+	 	* portion and the array portion by hand.
+	 	*/
+	 	printf("Here is Msg2 before sending\n");
+		
+		printf("Msg2 Details\n");
+		printf("msg2.g_b.gx      = %s\n",
+			hexstring(&msg2.g_b.gx, sizeof(msg2.g_b.gx)));
+		printf("msg2.g_b.gy      = %s\n",
+			hexstring(&msg2.g_b.gy, sizeof(msg2.g_b.gy)));
+		printf("msg2.spid        = %s\n",
+			hexstring(&msg2.spid, sizeof(msg2.spid)));
+		printf("msg2.quote_type  = %s\n",
+			hexstring(&msg2.quote_type, sizeof(msg2.quote_type)));
+		printf("msg2.kdf_id      = %s\n",
+			hexstring(&msg2.kdf_id, sizeof(msg2.kdf_id)));
+		printf("msg2.sign_gb_ga.x  = %s\n",
+			hexstring((uint32_t *) msg2.sign_gb_ga.x, sizeof(msg2.sign_gb_ga.x)));
+        printf("msg2.sign_gb_ga.y  = %s\n",
+			hexstring((uint32_t *) msg2.sign_gb_ga.y, sizeof(msg2.sign_gb_ga.y)));
+		printf("msg2.mac         = %s\n",
+			hexstring(msg2.mac, sizeof(msg2.mac)));
+		printf("msg2.sig_rl_size = %s\n",
+			hexstring(&msg2.sig_rl_size, sizeof(msg2.sig_rl_size)));
+    printf("\n");
+
+		printf("Copy/Paste Msg2 Below to Client\n");
+
+		msgio->send_partial((void *) &msg2, sizeof(sgx_ra_msg2_t));
+		// fsend_msg_partial(fplog, (void *) &msg2, sizeof(sgx_ra_msg2_t));
+
+		msgio->send(sigrl, msg2.sig_rl_size);
+		// fsend_msg(fplog, sigrl, msg2.sig_rl_size); 
+
+
 	}
 }
 
@@ -338,7 +384,6 @@ int do_attestation(sgx_enclave_id_t eid, config_t *config)
 		return 1;
 	}
 
- 
 		fprintf(stderr, "Msg1 Details");
 		fprintf(stderr, "msg1.g_a.gx = ");
 		print_hexstring(stderr, msg1.g_a.gx, 32);
@@ -368,6 +413,53 @@ int do_attestation(sgx_enclave_id_t eid, config_t *config)
 	msgio->send(&msg1, sizeof(msg1));
 
 	fprintf(stderr, "Waiting for msg2 here.\n");
+
+	/* Read msg2 
+	 *
+	 * msg2 is variable length b/c it includes the revocation list at
+	 * the end. msg2 is malloc'd in readZ_msg do free it when done.
+	 */
+
+	rv= msgio->read((void **) &msg2, NULL);
+	if ( rv == 0 ) {
+		enclave_ra_close(eid, &sgxrv, ra_ctx);
+		fprintf(stderr, "protocol error reading msg2\n");
+		delete msgio;
+		exit(1);
+	} else if ( rv == -1 ) {
+		enclave_ra_close(eid, &sgxrv, ra_ctx);
+		fprintf(stderr, "system error occurred while reading msg2\n");
+		delete msgio;
+		exit(1);
+	}
+
+
+		fprintf(stderr, "Msg2 Details\n");
+		fprintf(stderr,   "msg2.g_b.gx      = ");
+		print_hexstring(stderr, &msg2->g_b.gx, sizeof(msg2->g_b.gx));
+		fprintf(stderr, "\nmsg2.g_b.gy      = ");
+		print_hexstring(stderr, &msg2->g_b.gy, sizeof(msg2->g_b.gy));
+		fprintf(stderr, "\nmsg2.spid        = ");
+		print_hexstring(stderr, &msg2->spid, sizeof(msg2->spid));
+		fprintf(stderr, "\nmsg2.quote_type  = ");
+		print_hexstring(stderr, &msg2->quote_type, sizeof(msg2->quote_type));
+		fprintf(stderr, "\nmsg2.kdf_id      = ");
+		print_hexstring(stderr, &msg2->kdf_id, sizeof(msg2->kdf_id));
+		fprintf(stderr, "\nmsg2.sign_ga_gb  = ");
+		print_hexstring(stderr, &msg2->sign_gb_ga, sizeof(msg2->sign_gb_ga));
+		fprintf(stderr, "\nmsg2.mac         = ");
+		print_hexstring(stderr, &msg2->mac, sizeof(msg2->mac));
+		fprintf(stderr, "\nmsg2.sig_rl_size = ");
+		print_hexstring(stderr, &msg2->sig_rl_size, sizeof(msg2->sig_rl_size));
+		fprintf(stderr, "\nmsg2.sig_rl      = ");
+		print_hexstring(stderr, &msg2->sig_rl, msg2->sig_rl_size);
+		fprintf(stderr, "\n");
+
+		fprintf(stderr, "+++ msg2_size = %zu\n",
+			sizeof(sgx_ra_msg2_t)+msg2->sig_rl_size);
+		
+	
+
 	return 1;
 }
 

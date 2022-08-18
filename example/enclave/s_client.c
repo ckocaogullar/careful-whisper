@@ -1529,7 +1529,7 @@ int process_msg01 (uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, sg
     // cmac128(session->smk, (unsigned char *) msg2, 148,
 	// 	(unsigned char *) &msg2->mac);
 
-    sgx_rijndael128_cmac_msg(&smk, (unsigned char *)&msg2, 148, &msg2->mac);
+    sgx_rijndael128_cmac_msg(&smk, (unsigned char *)msg2, 148, &msg2->mac);
 
 
     mbedtls_printf("Msg2 Details\n");

@@ -1339,7 +1339,7 @@ void substitution(char *str, char c1, char c2)
 // The first function called by the verifier
 int process_msg01 (uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, sgx_ra_msg2_t *msg2, char **sigrl)
 {
-	mbedtls_printf("\nMsg0 Details (from Prover)\n");
+	mbedtls_printf("\nMsg0 Details (from Verifier)\n");
 	mbedtls_printf("msg0.extended_epid_group_id = %u\n",
 			msg0_extended_epid_group_id);
 	mbedtls_printf("\n");
@@ -1359,7 +1359,7 @@ int process_msg01 (uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, sg
 	// Pass msg1 back to the pointer in the caller func
 	// memcpy(msg1, &msg01->msg1, sizeof(sgx_ra_msg1_t));
 	
-	mbedtls_printf("\nMsg1 Details (from Prover)\n");
+	mbedtls_printf("\nMsg1 Details (from Verifier)\n");
 	mbedtls_printf("msg1.g_a.gx = %s\n",
 		hexstring(&msg1->g_a.gx, sizeof(msg1->g_a.gx)));
 	mbedtls_printf("msg1.g_a.gy = %s\n",
@@ -1370,7 +1370,7 @@ int process_msg01 (uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, sg
 
 	// /* Generate our session key */
 
-    // Generate a random EC key using the P-256 curve. This key will become Gb.
+    // Generate our session key -- a random EC key using the P-256 curve. This key will become Gb.
     mbedtls_printf("+++ generating session key Gb\n");
     sgx_ecc_state_handle_t p_ecc_handle;
     sgx_ec256_private_t p_private;
@@ -1382,7 +1382,7 @@ int process_msg01 (uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, sg
     sgx_cmac_128bit_tag_t kdk;
     sgx_cmac_128bit_tag_t smk;
 
-	memset(cmackey, 0, 16);
+	memset(cmackey, 0, SGX_CMAC_KEY_SIZE);
 
     status = sgx_ecc256_open_context(&p_ecc_handle);
     if(status != SGX_SUCCESS){
@@ -1404,11 +1404,11 @@ int process_msg01 (uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, sg
         mbedtls_printf("Error in sgx_ecc256_compute_shared_dhkey %d\n", status);
         return 1;
     }
-    mbedtls_printf("Shared DH key    = %s\n",
+    mbedtls_printf("Shared DH key (Little-endian)   = %s\n",
 		hexstring( &p_shared_key, sizeof(p_shared_key)));
 
     //     Perform an AES-128 CMAC on the little-endian form of Gabx using a block of 0x00 bytes for the key.
-    status = sgx_rijndael128_cmac_msg(&cmackey, &p_shared_key, sizeof(&p_shared_key), &kdk);
+    status = sgx_rijndael128_cmac_msg(&cmackey, &p_shared_key, sizeof(p_shared_key), &kdk);
     if(status != SGX_SUCCESS){
         mbedtls_printf("Error in KDK generatrion %d\n", status);
         return 1;
@@ -1472,7 +1472,7 @@ int process_msg01 (uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, sg
     memcpy(&msg2->g_b, &p_public, sizeof(p_public));
     // msg2->g_b = p_public;
 
-    // Get SigRL from Intel IAS server
+    /* Get SigRL from Intel IAS server */
     client_opt_t opt;
     char buf[1024];
     client_opt_init(&opt);
@@ -1512,10 +1512,11 @@ int process_msg01 (uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, sg
     sgx_ec256_signature_t signed_gb_ga;
     sgx_ec256_private_t service_private_key;
     memcpy(service_private_key.r, def_service_private_key, SGX_ECP256_KEY_SIZE);
-    sgx_ecdsa_sign(&gb_ga, 128, &def_service_private_key, &signed_gb_ga, p_ecc_handle);
+    mbedtls_printf("+++ service private key = %s\n", hexstring(service_private_key.r, sizeof(service_private_key)));
+    sgx_ecdsa_sign(&gb_ga, sizeof(gb_ga), &service_private_key, &signed_gb_ga, p_ecc_handle);
 
-    memcpy(msg2->sign_gb_ga.x, signed_gb_ga.x, SGX_NISTP_ECP256_KEY_SIZE);
-    memcpy(msg2->sign_gb_ga.y, signed_gb_ga.y, SGX_NISTP_ECP256_KEY_SIZE);
+    memcpy(msg2->sign_gb_ga.x, signed_gb_ga.x, sizeof(signed_gb_ga.x));
+    memcpy(msg2->sign_gb_ga.y, signed_gb_ga.y, sizeof(signed_gb_ga.y));
 
     mbedtls_printf("+++ r = %s\n", hexstring(signed_gb_ga.x, 32));
     mbedtls_printf("+++ s = %s\n", hexstring(signed_gb_ga.y, 32));

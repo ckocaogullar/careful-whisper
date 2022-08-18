@@ -223,7 +223,7 @@ int do_verification(sgx_enclave_id_t eid)
 			return 0;
 		}
 
-		printf("Msg0 Details (from Client)\n");
+		printf("Msg0 Details (from Verifier)\n");
 		printf("msg0.extended_epid_group_id = %u\n",
 				msg01->msg0_extended_epid_group_id);
 		printf("\n");
@@ -269,10 +269,8 @@ int do_verification(sgx_enclave_id_t eid)
 		printf("Copy/Paste Msg2 Below to Client\n");
 
 		msgio->send_partial((void *) &msg2, sizeof(sgx_ra_msg2_t));
-		// fsend_msg_partial(fplog, (void *) &msg2, sizeof(sgx_ra_msg2_t));
 
 		msgio->send(sigrl, msg2.sig_rl_size);
-		// fsend_msg(fplog, sigrl, msg2.sig_rl_size); 
 
 
 	}
@@ -366,7 +364,7 @@ int do_attestation(sgx_enclave_id_t eid, config_t *config)
 		return 1;
 	}
 
-		fprintf(stderr, "Msg0 Details");
+		fprintf(stderr, "Msg0 Details (from Prover)\n");
 		fprintf(stderr, "Extended Epid Group ID: ");
 		print_hexstring(stderr, &msg0_extended_epid_group_id,
 						sizeof(uint32_t));
@@ -384,7 +382,7 @@ int do_attestation(sgx_enclave_id_t eid, config_t *config)
 		return 1;
 	}
 
-		fprintf(stderr, "Msg1 Details");
+		fprintf(stderr, "Msg1 Details (from Prover)\n");
 		fprintf(stderr, "msg1.g_a.gx = ");
 		print_hexstring(stderr, msg1.g_a.gx, 32);
 		fprintf(stderr, "\nmsg1.g_a.gy = ");
@@ -407,7 +405,7 @@ int do_attestation(sgx_enclave_id_t eid, config_t *config)
 	 */
 
 
-	fprintf(stderr, "Copy/Paste Msg0||Msg1 Below to SP");
+	fprintf(stderr, "Copy/Paste Msg0||Msg1 Below to SP\n");
 	msgio->send_partial(&msg0_extended_epid_group_id,
 						sizeof(msg0_extended_epid_group_id));
 	msgio->send(&msg1, sizeof(msg1));
@@ -459,6 +457,62 @@ int do_attestation(sgx_enclave_id_t eid, config_t *config)
 			sizeof(sgx_ra_msg2_t)+msg2->sig_rl_size);
 		
 	
+	/* Process Msg2, Get Msg3  */
+	/* object msg3 is malloc'd by SGX SDK, so remember to free when finished */
+
+	msg3 = NULL;
+
+	status = sgx_ra_proc_msg2(ra_ctx, eid,
+		sgx_ra_proc_msg2_trusted, sgx_ra_get_msg3_trusted, msg2, 
+		sizeof(sgx_ra_msg2_t) + msg2->sig_rl_size,
+	    &msg3, &msg3_sz);
+
+	free(msg2);
+
+	if ( status != SGX_SUCCESS ) {
+		enclave_ra_close(eid, &sgxrv, ra_ctx);
+		fprintf(stderr, "sgx_ra_proc_msg2: %08x\n", status);
+
+		delete msgio;
+		return 1;
+	} 
+
+		fprintf(stderr, "+++ msg3_size = %u\n", msg3_sz);
+	                          
+// 	if ( verbose ) {
+// 		dividerWithText(stderr, "Msg3 Details");
+// 		dividerWithText(fplog, "Msg3 Details");
+// 		fprintf(stderr,   "msg3.mac         = ");
+// 		fprintf(fplog,   "msg3.mac         = ");
+// 		print_hexstring(stderr, msg3->mac, sizeof(msg3->mac));
+// 		print_hexstring(fplog, msg3->mac, sizeof(msg3->mac));
+// 		fprintf(stderr, "\nmsg3.g_a.gx      = ");
+// 		fprintf(fplog, "\nmsg3.g_a.gx      = ");
+// 		print_hexstring(stderr, msg3->g_a.gx, sizeof(msg3->g_a.gx));
+// 		print_hexstring(fplog, msg3->g_a.gx, sizeof(msg3->g_a.gx));
+// 		fprintf(stderr, "\nmsg3.g_a.gy      = ");
+// 		fprintf(fplog, "\nmsg3.g_a.gy      = ");
+// 		print_hexstring(stderr, msg3->g_a.gy, sizeof(msg3->g_a.gy));
+// 		print_hexstring(fplog, msg3->g_a.gy, sizeof(msg3->g_a.gy));
+// #ifdef _WIN32
+// 		fprintf(stderr, "\nmsg3.ps_sec_prop.sgx_ps_sec_prop_desc = ");
+// 		fprintf(fplog, "\nmsg3.ps_sec_prop.sgx_ps_sec_prop_desc = ");
+// 		print_hexstring(stderr, msg3->ps_sec_prop.sgx_ps_sec_prop_desc,
+// 			sizeof(msg3->ps_sec_prop.sgx_ps_sec_prop_desc));
+// 		print_hexstring(fplog, msg3->ps_sec_prop.sgx_ps_sec_prop_desc,
+// 			sizeof(msg3->ps_sec_prop.sgx_ps_sec_prop_desc));
+// 		fprintf(fplog, "\n");
+// #endif
+// 		fprintf(stderr, "\nmsg3.quote       = ");
+// 		fprintf(fplog, "\nmsg3.quote       = ");
+// 		print_hexstring(stderr, msg3->quote, msg3_sz-sizeof(sgx_ra_msg3_t));
+// 		print_hexstring(fplog, msg3->quote, msg3_sz-sizeof(sgx_ra_msg3_t));
+// 		fprintf(fplog, "\n");
+// 		fprintf(stderr, "\n");
+// 		fprintf(fplog, "\n");
+// 		divider(stderr);
+// 		divider(fplog);
+// 	}
 
 	return 1;
 }

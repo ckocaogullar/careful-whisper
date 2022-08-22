@@ -5,6 +5,7 @@ enclave {
     include "../common/ssl_context.h"
     include "sgx_key_exchange.h"
     include "sgx_tkey_exchange.h"
+    include "protocol.h"
 
     trusted {
         /* define ECALLs here. */
@@ -13,7 +14,9 @@ enclave {
         public void ssl_conn_init(void);
         public void ssl_conn_teardown(void);
         public void ssl_conn_handle(long int thread_id, [in,out] thread_info_t* thread_info);
-        public int attestation_step1(uint32_t msg0_extended_epid_group_id, [in, out] sgx_ra_msg1_t *msg1, [in, out] sgx_ra_msg2_t *msg2, [in, out] char **sigrl);
+        public int verifier_step1(uint32_t msg0_extended_epid_group_id, [in, out] sgx_ra_msg1_t *msg1, [in, out] sgx_ra_msg2_t *msg2, [in, out] char **sigrl);
+        public int verifier_step2([in, out]sgx_ra_msg1_t *msg1, [in, out] sgx_ra_msg3_t *msg3, size_t msg3_size, [in, out] attestation_status_t *attestation_status, [in, out] sgx_platform_info_t *platform_info);
+
         public sgx_status_t enclave_ra_init_def(int b_pse, [out] sgx_ra_context_t *ctx, [out] sgx_status_t *pse_status);
         public sgx_status_t enclave_ra_init(sgx_ec256_public_t key, int b_pse, [out] sgx_ra_context_t *ctx, [out] sgx_status_t *pse_status);
         public sgx_status_t enclave_ra_close(sgx_ra_context_t ctx);

@@ -198,6 +198,11 @@ int do_verification(sgx_enclave_id_t eid)
 	int *verif_result;
 	MsgIO *msgio;
 	sgx_ra_msg2_t msg2;
+	sgx_ra_msg3_t *msg3;
+	size_t msg3_size;
+	attestation_status_t attestation_status; 
+	sgx_platform_info_t platform_info;
+
 	try
 	{
 		msgio = new MsgIO(NULL, DEFAULT_PORT);
@@ -229,7 +234,7 @@ int do_verification(sgx_enclave_id_t eid)
 		printf("\n");
 
 		char *sigrl;
-		attestation_step1(eid, verif_result, msg01->msg0_extended_epid_group_id, &msg01->msg1, &msg2, &sigrl);
+		verifier_step1(eid, verif_result, msg01->msg0_extended_epid_group_id, &msg01->msg1, &msg2, &sigrl);
 
 	    free(msg01);
 
@@ -272,6 +277,29 @@ int do_verification(sgx_enclave_id_t eid)
 
 		msgio->send(sigrl, msg2.sig_rl_size);
 
+	/*
+	 * Read message 3
+	 *
+	 * CMACsmk(M) || M
+	 *
+	 * where
+	 *
+	 * M = ga || PS_SECURITY_PROPERTY || QUOTE
+	 *
+	 */
+
+	rv= msgio->read((void **) &msg3, &msg3_size);
+	if ( rv == 0 ) {
+		fprintf(stderr, "protocol error reading msg3\n");
+		delete msgio;
+		return 0;
+	} else if ( rv == -1 ) {
+		fprintf(stderr, "system error occurred while reading msg3\n");
+		delete msgio;
+		return 0;
+	}
+
+	verifier_step2(eid, verif_result, &msg01->msg1, msg3, msg3_size, &attestation_status, &platform_info);
 
 	}
 }
@@ -285,14 +313,12 @@ int do_attestation(sgx_enclave_id_t eid, config_t *config)
 	sgx_ra_msg1_t msg1;
 	sgx_ra_msg2_t *msg2 = NULL;
 	sgx_ra_msg3_t *msg3 = NULL;
-	ra_msg4_t *msg4 = NULL;
 	uint32_t msg0_extended_epid_group_id = 0;
 	uint32_t msg3_sz;
 	uint32_t flags = config->flags;
 	sgx_ra_context_t ra_ctx = 0xdeadbeef;
 	int rv;
 	MsgIO *msgio;
-	size_t msg4sz = 0;
 	int enclaveTrusted = NotTrusted; // Not Trusted
 	int b_pse = OPT_ISSET(flags, OPT_PSE);
 
@@ -479,40 +505,28 @@ int do_attestation(sgx_enclave_id_t eid, config_t *config)
 
 		fprintf(stderr, "+++ msg3_size = %u\n", msg3_sz);
 	                          
-// 	if ( verbose ) {
-// 		dividerWithText(stderr, "Msg3 Details");
-// 		dividerWithText(fplog, "Msg3 Details");
-// 		fprintf(stderr,   "msg3.mac         = ");
-// 		fprintf(fplog,   "msg3.mac         = ");
-// 		print_hexstring(stderr, msg3->mac, sizeof(msg3->mac));
-// 		print_hexstring(fplog, msg3->mac, sizeof(msg3->mac));
-// 		fprintf(stderr, "\nmsg3.g_a.gx      = ");
-// 		fprintf(fplog, "\nmsg3.g_a.gx      = ");
-// 		print_hexstring(stderr, msg3->g_a.gx, sizeof(msg3->g_a.gx));
-// 		print_hexstring(fplog, msg3->g_a.gx, sizeof(msg3->g_a.gx));
-// 		fprintf(stderr, "\nmsg3.g_a.gy      = ");
-// 		fprintf(fplog, "\nmsg3.g_a.gy      = ");
-// 		print_hexstring(stderr, msg3->g_a.gy, sizeof(msg3->g_a.gy));
-// 		print_hexstring(fplog, msg3->g_a.gy, sizeof(msg3->g_a.gy));
-// #ifdef _WIN32
-// 		fprintf(stderr, "\nmsg3.ps_sec_prop.sgx_ps_sec_prop_desc = ");
-// 		fprintf(fplog, "\nmsg3.ps_sec_prop.sgx_ps_sec_prop_desc = ");
-// 		print_hexstring(stderr, msg3->ps_sec_prop.sgx_ps_sec_prop_desc,
-// 			sizeof(msg3->ps_sec_prop.sgx_ps_sec_prop_desc));
-// 		print_hexstring(fplog, msg3->ps_sec_prop.sgx_ps_sec_prop_desc,
-// 			sizeof(msg3->ps_sec_prop.sgx_ps_sec_prop_desc));
-// 		fprintf(fplog, "\n");
-// #endif
-// 		fprintf(stderr, "\nmsg3.quote       = ");
-// 		fprintf(fplog, "\nmsg3.quote       = ");
-// 		print_hexstring(stderr, msg3->quote, msg3_sz-sizeof(sgx_ra_msg3_t));
-// 		print_hexstring(fplog, msg3->quote, msg3_sz-sizeof(sgx_ra_msg3_t));
-// 		fprintf(fplog, "\n");
-// 		fprintf(stderr, "\n");
-// 		fprintf(fplog, "\n");
-// 		divider(stderr);
-// 		divider(fplog);
-// 	}
+		fprintf(stderr, "Msg3 Details\n");
+		fprintf(stderr,   "msg3.mac         = ");
+		print_hexstring(stderr, msg3->mac, sizeof(msg3->mac));
+		fprintf(stderr, "\nmsg3.g_a.gx      = ");
+		print_hexstring(stderr, msg3->g_a.gx, sizeof(msg3->g_a.gx));
+		fprintf(stderr, "\nmsg3.g_a.gy      = ");
+		print_hexstring(stderr, msg3->g_a.gy, sizeof(msg3->g_a.gy));
+		fprintf(stderr, "\nmsg3.quote       = ");
+		print_hexstring(stderr, msg3->quote, msg3_sz-sizeof(sgx_ra_msg3_t));
+		fprintf(stderr, "\n");	
+
+	fprintf(stderr, "Copy/Paste Msg3 Below to SP\n");
+	msgio->send(msg3, msg3_sz);
+
+	// dividerWithText(fplog, "Msg3 ==> SP");
+	// fsend_msg(fplog, msg3, msg3_sz);
+	// divider(fplog);
+
+	if ( msg3 ) {
+		free(msg3);
+		msg3 = NULL;
+	}
 
 	return 1;
 }

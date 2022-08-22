@@ -91,6 +91,7 @@ static const unsigned char def_service_private_key[32] = {
 	0xad, 0x57, 0x34, 0x53, 0xd1, 0x03, 0x8c, 0x01
 };
 
+
 #if defined(MBEDTLS_X509_CRT_PARSE_C)
 #if defined(MBEDTLS_FS_IO)
 #define USAGE_IO \
@@ -1334,6 +1335,21 @@ void substitution(char *str, char c1, char c2)
       (str[i]) = c2;
 }
 
+
+int process_msg3(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t *msg3, size_t msg3_size, attestation_status_t *attestation_status, sgx_platform_info_t *platform_info)
+{
+    uint32_t quote_sz;
+    /*
+	 * The quote size will be the total msg3 size - sizeof(sgx_ra_msg3_t)
+	 * since msg3.quote is a flexible array member.
+	 *
+	 * Total message size is msg3_size/2 since the income message is in base16.
+	 */
+	quote_sz = (uint32_t)((msg3_size / 2) - sizeof(sgx_ra_msg3_t));
+	
+	mbedtls_printf("+++ quote_sz= %lu bytes\n", quote_sz);
+	
+}
 
 
 // The first function called by the verifier

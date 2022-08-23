@@ -185,6 +185,7 @@ sgx_status_t sgx_create_enclave_search(const char *filename, const int edebug,
 	return sgx_create_enclave(filename, edebug, token, updated, eid, attr);
 }
 
+
 // Verification part of the process normally happens in the service provider, not using any enclaves
 // 
 int do_verification(sgx_enclave_id_t eid)

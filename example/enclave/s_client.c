@@ -1338,11 +1338,65 @@ void substitution(char *str, char c1, char c2)
       (str[i]) = c2;
 }
 
+size_t b64_encoded_size(size_t inlen)
+{
+	size_t ret;
+
+	ret = inlen;
+	if (inlen % 3 != 0)
+		ret += 3 - (inlen % 3);
+	ret /= 3;
+	ret *= 4;
+
+	return ret;
+}
+
+const char b64chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+char *b64_encode(const unsigned char *in, size_t len)
+{
+	char   *out;
+	size_t  elen;
+	size_t  i;
+	size_t  j;
+	size_t  v;
+
+	if (in == NULL || len == 0)
+		return NULL;
+
+	elen = b64_encoded_size(len);
+	out  = malloc(elen+1);
+	out[elen] = '\0';
+
+	for (i=0, j=0; i<len; i+=3, j+=4) {
+		v = in[i];
+		v = i+1 < len ? v << 8 | in[i+1] : v << 8;
+		v = i+2 < len ? v << 8 | in[i+2] : v << 8;
+
+		out[j]   = b64chars[(v >> 18) & 0x3F];
+		out[j+1] = b64chars[(v >> 12) & 0x3F];
+		if (i+1 < len) {
+			out[j+2] = b64chars[(v >> 6) & 0x3F];
+		} else {
+			out[j+2] = '=';
+		}
+		if (i+2 < len) {
+			out[j+3] = b64chars[v & 0x3F];
+		} else {
+			out[j+3] = '=';
+		}
+	}
+
+	return out;
+}
+
 
 int process_msg3(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t **msg3, size_t msg3_size, attestation_status_t *attestation_status, sgx_platform_info_t *platform_info)
 {
     uint32_t quote_sz;
     sgx_mac_t vrfymac;
+    char *b64quote;
+    sgx_quote_t *q;
 
     /*
 	 * The quote size will be the total msg3 size - sizeof(sgx_ra_msg3_t)
@@ -1380,10 +1434,6 @@ int process_msg3(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t **msg3, size_t msg3_size, at
     /* Validate the MAC of M */
 
 
-    // mbedtls_printf("SMK is %s\n", hexstring(smk, sizeof(sgx_cmac_128bit_tag_t)));
-    // mbedtls_printf("Mac size is %d\n", sizeof(sgx_ra_msg3_t)-sizeof(sgx_mac_t)+quote_sz);
-    // mbedtls_printf("Msg3 M is %s\n", hexstring(&msg3->g_a, sizeof(sgx_ra_msg3_t)-sizeof(sgx_mac_t)+quote_sz));
-
     sgx_rijndael128_cmac_msg(smk, (unsigned char *) &(*msg3)->g_a, sizeof(sgx_ra_msg3_t)-sizeof(sgx_mac_t)+quote_sz, (unsigned char *) vrfymac);
                                                     
 		mbedtls_printf("+++ Validating MACsmk(M)\n");
@@ -1395,6 +1445,72 @@ int process_msg3(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t **msg3, size_t msg3_size, at
 		free(msg3);
 		return 0;
 	}
+
+    /* Encode the report body as base64 */
+
+	b64quote= b64_encode((char *) &(*msg3)->quote, quote_sz);
+	if ( b64quote == NULL ) {
+		mbedtls_printf("Could not base64 encode the quote\n");
+		free(msg3);
+		return 0;
+	}
+	q= (sgx_quote_t *) (*msg3)->quote;
+
+	
+		mbedtls_printf("Msg3 Details (in Verifier)\n");
+		mbedtls_printf("msg3.mac                 = %s\n",
+			hexstring(&(*msg3)->mac, sizeof((*msg3)->mac)));
+		mbedtls_printf("msg3.g_a.gx              = %s\n",
+			hexstring((*msg3)->g_a.gx, sizeof((*msg3)->g_a.gx)));
+		mbedtls_printf("msg3.g_a.gy              = %s\n",
+			hexstring(&(*msg3)->g_a.gy, sizeof((*msg3)->g_a.gy)));
+		mbedtls_printf("msg3.ps_sec_prop         = %s\n",
+			hexstring(&(*msg3)->ps_sec_prop, sizeof((*msg3)->ps_sec_prop)));
+		mbedtls_printf("msg3.quote.version       = %s\n",
+			hexstring(&q->version, sizeof(uint16_t)));
+		mbedtls_printf("msg3.quote.sign_type     = %s\n",
+			hexstring(&q->sign_type, sizeof(uint16_t)));
+		mbedtls_printf("msg3.quote.epid_group_id = %s\n",
+			hexstring(&q->epid_group_id, sizeof(sgx_epid_group_id_t)));
+		mbedtls_printf("msg3.quote.qe_svn        = %s\n",
+			hexstring(&q->qe_svn, sizeof(sgx_isv_svn_t)));
+		mbedtls_printf("msg3.quote.pce_svn       = %s\n",
+			hexstring(&q->pce_svn, sizeof(sgx_isv_svn_t)));
+		mbedtls_printf("msg3.quote.xeid          = %s\n",
+			hexstring(&q->xeid, sizeof(uint32_t)));
+		mbedtls_printf("msg3.quote.basename      = %s\n",
+			hexstring(&q->basename, sizeof(sgx_basename_t)));
+		mbedtls_printf("msg3.quote.report_body   = %s\n",
+			hexstring(&q->report_body, sizeof(sgx_report_body_t)));
+		mbedtls_printf("msg3.quote.signature_len = %s\n",
+			hexstring(&q->signature_len, sizeof(uint32_t)));
+		mbedtls_printf("msg3.quote.signature     = %s\n",
+			hexstring(&q->signature, q->signature_len));
+
+		mbedtls_printf("Enclave Quote (base64) ==> Send to IAS\n");
+
+		mbedtls_printf(b64quote);
+
+		mbedtls_printf("\n");
+
+        /* Verify that the EPID group ID in the quote matches the one from msg1 */
+
+        mbedtls_printf("+++ Validating quote's epid_group_id against msg1\n");
+        mbedtls_printf("msg1.egid = %s\n", 
+            hexstring(msg1->gid, sizeof(sgx_epid_group_id_t)));
+        mbedtls_printf("msg3.quote.epid_group_id = %s\n",
+            hexstring(&q->epid_group_id, sizeof(sgx_epid_group_id_t)));
+        
+
+        if ( memcmp(msg1->gid, &q->epid_group_id, sizeof(sgx_epid_group_id_t)) != 0) {
+            mbedtls_printf("EPID GID mismatch. Attestation failed.\n");
+            free(b64quote);
+            free(msg3);
+            return 0;
+        }
+
+	
+
 
 }
 

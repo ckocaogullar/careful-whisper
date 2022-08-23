@@ -236,7 +236,6 @@ int do_verification(sgx_enclave_id_t eid)
 		char *sigrl;
 		verifier_step1(eid, verif_result, msg01->msg0_extended_epid_group_id, &msg01->msg1, &msg2, &sigrl);
 
-	    free(msg01);
 
 		/* Send message 2 */
 
@@ -288,6 +287,8 @@ int do_verification(sgx_enclave_id_t eid)
 	 *
 	 */
 
+	printf("\n");
+	printf("Reading Msg3\n");
 	rv= msgio->read((void **) &msg3, &msg3_size);
 	if ( rv == 0 ) {
 		fprintf(stderr, "protocol error reading msg3\n");
@@ -299,7 +300,8 @@ int do_verification(sgx_enclave_id_t eid)
 		return 0;
 	}
 
-	verifier_step2(eid, verif_result, &msg01->msg1, msg3, msg3_size, &attestation_status, &platform_info);
+	printf("Msg3 on verifier, outside the enclave is %s\n", hexstring(msg3, msg3_size/2));
+	verifier_step2(eid, verif_result, &msg01->msg1, &msg3, msg3_size, &attestation_status, &platform_info);
 
 	}
 }

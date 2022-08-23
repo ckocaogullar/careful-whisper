@@ -82,6 +82,9 @@
 #define MIN_ISVSVN "1"
 #define ALLOW_DEBUG "1"
 
+// Initializing the SMK here, since it will be used in multiple
+// message processing functions
+sgx_cmac_128bit_tag_t smk;
 
 
 static const unsigned char def_service_private_key[32] = {
@@ -1336,9 +1339,11 @@ void substitution(char *str, char c1, char c2)
 }
 
 
-int process_msg3(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t *msg3, size_t msg3_size, attestation_status_t *attestation_status, sgx_platform_info_t *platform_info)
+int process_msg3(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t **msg3, size_t msg3_size, attestation_status_t *attestation_status, sgx_platform_info_t *platform_info)
 {
     uint32_t quote_sz;
+    sgx_mac_t vrfymac;
+
     /*
 	 * The quote size will be the total msg3 size - sizeof(sgx_ra_msg3_t)
 	 * since msg3.quote is a flexible array member.
@@ -1348,7 +1353,49 @@ int process_msg3(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t *msg3, size_t msg3_size, att
 	quote_sz = (uint32_t)((msg3_size / 2) - sizeof(sgx_ra_msg3_t));
 	
 	mbedtls_printf("+++ quote_sz= %lu bytes\n", quote_sz);
+    mbedtls_printf("+++ Msg3 inside the verifier enclave is: %s\n", hexstring(*msg3, msg3_size/2));
+
+    mbedtls_printf("msg3.quote = %s\n",
+			hexstring((*msg3)->quote, quote_sz));
+
+    /* Make sure Ga matches msg1 */
+
+
+		mbedtls_printf("+++ Verifying msg3.g_a matches msg1.g_a\n");
+		mbedtls_printf("msg1.g_a.gx = %s\n",
+			hexstring(msg1->g_a.gx, sizeof(msg1->g_a.gx)));
+		mbedtls_printf("msg1.g_a.gy = %s\n",
+			hexstring(msg1->g_a.gy, sizeof(msg1->g_a.gy)));
+		mbedtls_printf("msg3.g_a.gx = %s\n",
+			hexstring((*msg3)->g_a.gx, sizeof((*msg3)->g_a.gx)));
+		mbedtls_printf("msg3.g_a.gy = %s\n",
+			hexstring((*msg3)->g_a.gy, sizeof((*msg3)->g_a.gy)));
 	
+	if (memcmp(&(*msg3)->g_a, &msg1->g_a, sizeof(sgx_ec256_public_t)) != 0) {
+		mbedtls_printf("msg1.g_a and mgs3.g_a keys don't match\n");
+		free(msg3);
+		return 0;
+	}
+	
+    /* Validate the MAC of M */
+
+
+    // mbedtls_printf("SMK is %s\n", hexstring(smk, sizeof(sgx_cmac_128bit_tag_t)));
+    // mbedtls_printf("Mac size is %d\n", sizeof(sgx_ra_msg3_t)-sizeof(sgx_mac_t)+quote_sz);
+    // mbedtls_printf("Msg3 M is %s\n", hexstring(&msg3->g_a, sizeof(sgx_ra_msg3_t)-sizeof(sgx_mac_t)+quote_sz));
+
+    sgx_rijndael128_cmac_msg(smk, (unsigned char *) &(*msg3)->g_a, sizeof(sgx_ra_msg3_t)-sizeof(sgx_mac_t)+quote_sz, (unsigned char *) vrfymac);
+                                                    
+		mbedtls_printf("+++ Validating MACsmk(M)\n");
+		mbedtls_printf("msg3.mac   = %s\n", hexstring(&(*msg3)->mac, sizeof(sgx_mac_t)));
+		mbedtls_printf("calculated = %s\n", hexstring(&vrfymac, sizeof(sgx_cmac_128bit_tag_t)));
+	
+	if (memcmp(&(*msg3)->mac, &vrfymac, sizeof(sgx_mac_t)) != 0) {
+		mbedtls_printf("Failed to verify msg3 MAC\n");
+		free(msg3);
+		return 0;
+	}
+
 }
 
 
@@ -1396,7 +1443,6 @@ int process_msg01 (uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, sg
     // unsigned char cmackey[16];
     sgx_cmac_128bit_key_t cmackey;
     sgx_cmac_128bit_tag_t kdk;
-    sgx_cmac_128bit_tag_t smk;
 
 	memset(cmackey, 0, SGX_CMAC_KEY_SIZE);
 

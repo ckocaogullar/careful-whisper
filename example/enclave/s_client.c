@@ -68,7 +68,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+#include "string.h"
 
 // Modify the following setting values with the correct values
 #define SPID "347A02ABAE509A6E43E376C7250FAE99"
@@ -381,9 +381,10 @@ uint8_t* datahex(char* string) {
 }
 
 
-int ssl_client(client_opt_t opt, char* headers[], int n_header, unsigned char* output, int length)
+int ssl_client(client_opt_t opt, request_t req_type, char* headers[], int n_header, char* body, unsigned char* output, int length)
 {
     mbedtls_printf("SSL Client called\n");
+         
     int ret = 0, len, tail_len, i, written, frags, retry_left;
     mbedtls_net_context server_fd;
     unsigned char buf[MBEDTLS_SSL_MAX_CONTENT_LEN + 1];
@@ -569,7 +570,7 @@ int ssl_client(client_opt_t opt, char* headers[], int n_header, unsigned char* o
         LL_CRITICAL(" mbedtls_ctr_drbg_seed returned -%#x", -ret);
         goto exit;
     }
-
+    
 #if defined(MBEDTLS_X509_CRT_PARSE_C)
     /*
      * 1.1. Load the trusted CA
@@ -590,7 +591,10 @@ int ssl_client(client_opt_t opt, char* headers[], int n_header, unsigned char* o
     else
 #endif
     // load trusted crts
+
 #include "ca_bundle.h"
+    
+  
   ret = mbedtls_x509_crt_parse(&cacert,
                                (const unsigned char *) mozilla_ca_bundle,
                                sizeof mozilla_ca_bundle);
@@ -603,11 +607,13 @@ int ssl_client(client_opt_t opt, char* headers[], int n_header, unsigned char* o
     LL_CRITICAL("  mbedtls_pk_parse_key returned -%#x", -ret);
     goto exit;
   }
+
 #endif /* MBEDTLS_X509_CRT_PARSE_C */
 
     /*
      * 2. Start the connection
      */
+    
     if( opt.server_addr == NULL)
         opt.server_addr = opt.server_name;
 
@@ -637,7 +643,7 @@ int ssl_client(client_opt_t opt, char* headers[], int n_header, unsigned char* o
      * 3. Setup stuff
      */
     mbedtls_printf( "Setting up the SSL/TLS structure...\n" );
-
+    
     if( ( ret = mbedtls_ssl_config_defaults( &conf,
                     MBEDTLS_SSL_IS_CLIENT,
                     opt.transport,
@@ -919,8 +925,15 @@ int ssl_client(client_opt_t opt, char* headers[], int n_header, unsigned char* o
 
 send_request:
     mbedtls_printf("Sending a request\n");
-    len = mbedtls_snprintf( (char *) buf, sizeof(buf) - 1, GET_REQUEST,
+    if (req_type == (request_t) get){
+        len = mbedtls_snprintf( (char *) buf, sizeof(buf) - 1, GET_REQUEST,
                     opt.request_page );
+    }
+    else if (req_type == (request_t) post){
+        len = mbedtls_snprintf( (char *) buf, sizeof(buf) - 1, POST_REQUEST,
+                    opt.request_page );
+    }
+    
     
     if (headers && n_header > 0)
     {
@@ -929,6 +942,10 @@ send_request:
             len += mbedtls_snprintf( (char*)buf + len, sizeof(buf) -1 - len, "%s\r\n", headers[i]);
         }
     }
+    if(body != "\0"){
+        len += mbedtls_snprintf( (char*)buf + len, sizeof(buf) -1 - len, "\r\n%s\r\n", body);
+    }
+
     tail_len = (int) strlen( GET_REQUEST_END );
 
     /* Add padding to GET request to reach opt.request_size in length */
@@ -1390,6 +1407,63 @@ char *b64_encode(const unsigned char *in, size_t len)
 	return out;
 }
 
+/* A utility function to reverse a string  */
+void reverse(char str[], int length)
+{
+    int start = 0;
+    int end = length -1;
+    while (start < end)
+    {   
+        char *temp = *(str+start);
+        *(str+start) = *(str+end);
+        *(str+end) = temp;
+        // swap(*(str+start), *(str+end));
+        start++;
+        end--;
+    }
+}
+ 
+// Implementation of itoa()
+char* itoa(int num, char* str, int base)
+{
+    int i = 0;
+    int isNegative = 0;
+ 
+    /* Handle 0 explicitly, otherwise empty string is printed for 0 */
+    if (num == 0)
+    {
+        str[i++] = '0';
+        str[i] = '\0';
+        return str;
+    }
+ 
+    // In standard itoa(), negative numbers are handled only with
+    // base 10. Otherwise numbers are considered unsigned.
+    if (num < 0 && base == 10)
+    {
+        isNegative = 1;
+        num = -num;
+    }
+ 
+    // Process individual digits
+    while (num != 0)
+    {
+        int rem = num % base;
+        str[i++] = (rem > 9)? (rem-10) + 'a' : rem + '0';
+        num = num/base;
+    }
+ 
+    // If number is negative, append '-'
+    if (isNegative)
+        str[i++] = '-';
+ 
+    str[i] = '\0'; // Append string terminator
+ 
+    // Reverse the string
+    reverse(str, i);
+ 
+    return str;
+}
 
 int process_msg3(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t **msg3, size_t msg3_size, attestation_status_t *attestation_status, sgx_platform_info_t *platform_info)
 {
@@ -1509,8 +1583,43 @@ int process_msg3(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t **msg3, size_t msg3_size, at
             return 0;
         }
 
-	
+    
+        /* Get attestation report from Intel IAS server */
+        client_opt_t opt;
+        char buf[2024];
+        char *body = (char*)malloc((strlen(b64quote) + strlen("{\"isvEnclaveQuote\":\"\"}"))*sizeof(char));
+        client_opt_init(&opt);
+        opt.debug_level = 1;
+        opt.server_addr = "api.trustedservices.intel.com";
+        opt.request_page = "/sgx/dev/attestation/v4/report HTTP/1.1";
+        char* http_headers[4]; 
+        http_headers[0] = "Host: api.trustedservices.intel.com";
+        http_headers[1] = "Ocp-Apim-Subscription-Key: a86c71cb05af4c33a7bf9ec34e8ccd64";
+        http_headers[2] = "Content-Type: application/json";
+        http_headers[3] = (char*)malloc(20);
+        char content_length[5];
 
+        // Create the body
+        strcpy(body, "{\"isvEnclaveQuote\":\"");
+        strncat(body, b64quote, strlen(b64quote));
+        strncat(body, "\"}", 2);
+       
+        
+
+        // Create the content length header
+        itoa(strlen(body), content_length, 10);
+        strcpy(http_headers[3], "Content-length: ");
+        strncat(http_headers[3], content_length, strlen(content_length));
+
+        // Make HTTP request to IAS from inside the enclave
+        ssl_client(opt, (request_t) post, http_headers, 4, body, buf, sizeof buf);
+
+        // Parse the response to learn the SigRL
+        size_t slen = sizeof(buf) - 1; 
+        char *test_body; 
+        parse_response(buf, &test_body, slen, strlen(buf));
+        // strncpy(*sigrl, test_body, strlen(test_body));
+        mbedtls_printf("Attestation report is %s\n", test_body);
 
 }
 
@@ -1662,7 +1771,7 @@ int process_msg01 (uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, sg
     http_headers[1] = "Ocp-Apim-Subscription-Key: 2f4641eb3f334703adafa46c35556505";
 
     // Make HTTP request to IAS from inside the enclave
-    ssl_client(opt, http_headers, 2, buf, sizeof buf);
+    ssl_client(opt, (request_t) get, http_headers, 2, "\0", buf, sizeof buf);
 
     // Parse the response to learn the SigRL
     size_t slen = sizeof(buf) - 1; 

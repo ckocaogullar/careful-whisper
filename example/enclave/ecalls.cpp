@@ -53,7 +53,7 @@ int sgx_connect()
     headers[0] = "Host: api.trustedservices.intel.com";
     headers[1] = "Ocp-Apim-Subscription-Key: 2f4641eb3f334703adafa46c35556505";
 
-    return ssl_client(opt, headers, 2, buf, sizeof buf);
+    return ssl_client(opt, (request_t) get, headers, 2, NULL, buf, sizeof buf);
 }
 
 int sgx_accept()

@@ -302,7 +302,8 @@ int do_verification(sgx_enclave_id_t eid)
 	}
 
 	printf("Msg3 on verifier, outside the enclave is %s\n", hexstring(msg3, msg3_size/2));
-	verifier_step2(eid, verif_result, &msg01->msg1, &msg3, msg3_size, &attestation_status, &platform_info);
+	ra_msg4_t msg4;
+	verifier_step2(eid, verif_result, &msg01->msg1, &msg3, msg3_size, &msg4);
 
 	}
 }

@@ -19,6 +19,7 @@ in the License.
 #define __PROTOCOL_H
 
 #include <inttypes.h>
+#include <sgx_quote.h>
 
 /*
  * Define a structure to be used to transfer the Attestation Status 
@@ -41,6 +42,10 @@ typedef enum {
 	Trusted
 } attestation_status_t;
 
+typedef struct _ra_msg4_struct {
+	attestation_status_t status;
+	sgx_platform_info_t platformInfoBlob;
+} ra_msg4_t;
 
 #endif
 

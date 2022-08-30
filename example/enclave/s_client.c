@@ -61,6 +61,7 @@
 #include "sgx_tkey_exchange.h"
 #include "sgx_tcrypto.h"
 #include "sgx_quote.h"
+#include "jsmn.h"
 #include "picohttpparser/picohttpparser.h"
 
 #include <stdio.h>
@@ -1653,24 +1654,19 @@ int process_msg3(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t **msg3, size_t msg3_size, ra
     char *response_body = malloc(strlen (buf)); 
     parse_response(buf, response_body, slen);
     
-    mbedtls_printf("Attestation report is %s\n", response_body);
+    mbedtls_printf("\n++++ Attestation report is:          %s\n", response_body);
     struct phr_header parsed_response_body[5];
-    size_t num_response_elements = sizeof(parsed_response_body) / sizeof(parsed_response_body[0]);
-    mbedtls_printf("Num response elements is %d\n", num_response_elements);
-    char *new_r = malloc(strlen(response_body) + 1);
-    strncpy(new_r, " ", 1);
-    strncat(new_r, response_body, strlen(response_body) + 1);
-    mbedtls_printf("Attestation report with space in front is%s\n", new_r);
-    // phr_parse_headers(new_r, sizeof(new_r) - 1, parsed_response_body, &num_response_elements, 0);
-    char token[1024];
-    int 
-    parse_token(response_body, (char *)(&a + 1) - 1, &token)
-    mbedtls_printf("I have parsed the response body\n");
-    mbedtls_printf("Num response elements is %d\n", num_response_elements);
+    int num_response_elements;
+    jsmn_parser parser;
+    jsmn_init(&parser);
+    jsmntok_t tokens[256];
+
+    num_response_elements = jsmn_parse(&parser, response_body, strlen(response_body), tokens, 256);
+
+    mbedtls_printf("\n++++ Parsed attestation report is:\n");
     for (int i = 0; i != num_response_elements; ++i)
     {
-        mbedtls_printf("%.*s: %.*s\n", (int)parsed_response_body[i].name_len, parsed_response_body[i].name,
-                       (int)parsed_response_body[i].value_len, parsed_response_body[i].value);
+        mbedtls_printf("%.*s\n", (tokens[i].end - tokens[i].start), response_body + tokens[i].start);
     }
 
 }

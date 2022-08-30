@@ -17,6 +17,7 @@
 #include "crypto.h"
 #include "protocol.h"
 #include <sys/stat.h>
+#include "jsmn.h"
 
 #include <unistd.h>
 
@@ -203,6 +204,7 @@ int do_verification(sgx_enclave_id_t eid)
 	size_t msg3_size;
 	attestation_status_t attestation_status; 
 	sgx_platform_info_t platform_info;
+	
 
 	try
 	{

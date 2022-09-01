@@ -307,6 +307,15 @@ int do_verification(sgx_enclave_id_t eid)
 	ra_msg4_t msg4;
 	verifier_step2(eid, verif_result, &msg01->msg1, &msg3, msg3_size, &msg4);
 
+	// Send msg4
+	printf("Copy/Paste Msg4 Below to Client"); 
+
+	/* Serialize the members of the Msg4 structure independently */
+	/* vs. the entire structure as one send_msg() */
+
+	msgio->send_partial((void *)&msg4.status, sizeof(msg4.status));
+	msgio->send(&msg4.platformInfoBlob, sizeof(msg4.platformInfoBlob));
+
 	}
 }
 
@@ -319,8 +328,10 @@ int do_attestation(sgx_enclave_id_t eid, config_t *config)
 	sgx_ra_msg1_t msg1;
 	sgx_ra_msg2_t *msg2 = NULL;
 	sgx_ra_msg3_t *msg3 = NULL;
+	ra_msg4_t *msg4 = NULL;
 	uint32_t msg0_extended_epid_group_id = 0;
 	uint32_t msg3_sz;
+	size_t msg4_sz = 0;
 	uint32_t flags = config->flags;
 	sgx_ra_context_t ra_ctx = 0xdeadbeef;
 	int rv;
@@ -534,6 +545,40 @@ int do_attestation(sgx_enclave_id_t eid, config_t *config)
 		msg3 = NULL;
 	}
 
+	/* Read Msg4 provided by Service Provider, then process */
+        
+	rv= msgio->read((void **)&msg4, &msg4_sz);
+	if ( rv == 0 ) {
+		enclave_ra_close(eid, &sgxrv, ra_ctx);
+		fprintf(stderr, "protocol error reading msg4\n");
+		delete msgio;
+		exit(1);
+	} else if ( rv == -1 ) {
+		enclave_ra_close(eid, &sgxrv, ra_ctx);
+		fprintf(stderr, "system error occurred while reading msg4\n");
+		delete msgio;
+		exit(1);
+	}
+
+	printf("\nEnclave Trust Status from Service Provider\n");
+
+	enclaveTrusted= msg4->status;
+	if ( enclaveTrusted == Trusted ) {
+		printf("Enclave TRUSTED\n");
+	}
+	else if ( enclaveTrusted == NotTrusted ) {
+		printf("Enclave NOT TRUSTED\n");
+	}
+	else if ( enclaveTrusted == Trusted_ItsComplicated ) {
+		// Trusted, but client may be untrusted in the future unless it
+		// takes action.
+	printf("Enclave Trust is TRUSTED and COMPLICATED. The client is out of date and\nmay not be trusted in the future depending on the service provider's  policy.\n");
+	} else {
+		// Not Trusted, but client may be able to take action to become
+		// trusted.
+
+		printf("Enclave Trust is NOT TRUSTED and COMPLICATED. The client is out of date.\n");
+	}
 	return 1;
 }
 

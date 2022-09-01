@@ -1660,14 +1660,69 @@ int process_msg3(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t **msg3, size_t msg3_size, ra
     jsmn_parser parser;
     jsmn_init(&parser);
     jsmntok_t tokens[256];
+    char quote_status[1024];
+    char temp_str[1024];
+    char pibBuff[1024];
 
+    // Parse the JSON attestation report
     num_response_elements = jsmn_parse(&parser, response_body, strlen(response_body), tokens, 256);
-
-    mbedtls_printf("\n++++ Parsed attestation report is:\n");
+    
+    
     for (int i = 0; i != num_response_elements; ++i)
     {
-        mbedtls_printf("%.*s\n", (tokens[i].end - tokens[i].start), response_body + tokens[i].start);
+        strncpy(temp_str, response_body + tokens[i].start, tokens[i].end - tokens[i].start);
+
+        // Find quote status and add to msg4
+        if (strcmp(temp_str, "isvEnclaveQuoteStatus") == 0)
+        {
+            strncpy(quote_status, response_body + tokens[i+1].start, tokens[i+1].end - tokens[i+1].start);
+        }
+        
+        // Find ISV Blob Info and add to msg4
+        
+        if (strcmp(temp_str, "platformInfoBlob") == 0){
+            
+            strncpy(temp_str, response_body + tokens[i+1].start, tokens[i+1].end - tokens[i+1].start);
+
+            /* The platformInfoBlob has two parts, a TVL Header (4 bytes),
+            * and TLV Payload (variable) */
+            strncpy(pibBuff, temp_str + (4*2), strlen(temp_str) - (4*2));
+
+            /* remove the TLV Header (8 base16 chars, ie. 4 bytes) from
+            * the PIB Buff. Copy the rest. */
+            
+            int ret = strncpy((unsigned char *)&msg4->platformInfoBlob, pibBuff, strlen(pibBuff));
+
+            break;
+        }
+
+        memset(temp_str, 0, strlen(temp_str));
+
+	
     }
+    mbedtls_printf("\n++++ Quote status is: %s\n", quote_status);
+     mbedtls_printf("\n++++ PIB is: %s\n", pibBuff);
+
+    memset(msg4, 0, sizeof(ra_msg4_t));
+
+	if (strcmp(quote_status, "OK") == 0) {
+		msg4->status = Trusted;
+		mbedtls_printf("Enclave TRUSTED\n");
+	} else if (strcmp(quote_status, "CONFIGURATION_NEEDED") == 0) {
+        mbedtls_printf("Enclave TRUSTED and COMPLICATED - Reason: %s\n",
+            quote_status);
+        msg4->status = Trusted_ItsComplicated;
+	} else if (strcmp(quote_status, "GROUP_OUT_OF_DATE") == 0) {
+		msg4->status = NotTrusted_ItsComplicated;
+		mbedtls_printf("Enclave NOT TRUSTED and COMPLICATED - Reason: %s\n",
+			quote_status);
+	} else {
+		msg4->status = NotTrusted;
+		mbedtls_printf("Enclave NOT TRUSTED - Reason: %s\n",
+			quote_status);
+	}
+
+    return 1;
 
 }
 

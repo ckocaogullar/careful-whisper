@@ -780,7 +780,7 @@ void term_handler( int sig )
 }
 #endif
 
-int ssl_server()
+int ssl_server(unsigned char *output)
 {
     int ret = 0, len, written, frags, exchanges_left;
     int version_suites[4][2];
@@ -1377,6 +1377,7 @@ int ssl_server()
     mbedtls_printf( "  . Loading the CA root certificate ..." );
 
 #if defined(MBEDTLS_FS_IO)
+
     if( strlen( opt.ca_path ) )
         if( strcmp( opt.ca_path, "none" ) == 0 )
             ret = 0;
@@ -1390,14 +1391,22 @@ int ssl_server()
     else
 #endif
 #if defined(MBEDTLS_CERTS_C)
-        for( i = 0; mbedtls_test_cas[i] != NULL; i++ )
-        {
-            ret = mbedtls_x509_crt_parse( &cacert,
-                                  (const unsigned char *) mbedtls_test_cas[i],
-                                  mbedtls_test_cas_len[i] );
-            if( ret != 0 )
-                break;
-        }
+mbedtls_printf("#if defined(MBEDTLS_CERTS_C)\n");
+        // for( i = 0; mbedtls_test_cas[i] != NULL; i++ )
+        // {
+        //     mbedtls_printf("%s", mbedtls_test_cas[i]);
+        //     ret = mbedtls_x509_crt_parse( &cacert,
+        //                           (const unsigned char *) mbedtls_test_cas[i],
+        //                           mbedtls_test_cas_len[i] );
+        //     if( ret != 0 )
+        //         break;
+        // }
+    
+        ret = mbedtls_x509_crt_parse( &cacert,
+                                  (const unsigned char *) p2p_attestation_cert,
+                                  strlen(p2p_attestation_cert) + 1 );
+    mbedtls_printf("p2p_attestation_cert is\n");
+    mbedtls_printf("%s\n", p2p_attestation_cert);
 #else
     {
         ret = 1;
@@ -2060,12 +2069,12 @@ data_exchange:
             {
                 len = ret;
                 buf[len] = '\0';
-                mbedtls_printf( " %d bytes read\n\n%s\n", len, (char *) buf );
+                mbedtls_printf( " %d bytes read from stream\n\n%s\n", len, (char *) buf );
+                // *output = malloc(strlen);
+                strncpy(output, buf, sizeof(buf)-1);
+                mbedtls_printf("Output is %s\n", output);
 
-                /* End of message should be detected according to the syntax of the
-                 * application protocol (eg HTTP), just use a dummy test here. */
-                if( buf[len - 1] == '\n' )
-                    terminated = 1;
+                terminated = 1;
             }
             else
             {
@@ -2143,7 +2152,7 @@ data_exchange:
 
         len = ret;
         buf[len] = '\0';
-        mbedtls_printf( " %d bytes read\n\n%s", len, (char *) buf );
+        mbedtls_printf( " %d bytes read from datagram\n\n%s", len, (char *) buf );
         ret = 0;
     }
 
@@ -2239,7 +2248,10 @@ close_notify:
 
     mbedtls_printf( " done\n" );
 
-    goto reset;
+    // goto reset;
+
+    // CEREN: Modified to finish after a single round of data exchange with the client
+    goto exit;
 
     /*
      * Cleanup and exit

@@ -652,11 +652,23 @@ int ret;
 				fprintf(stderr, "Did you forget to set LD_LIBRARY_PATH?\n");
 			return 1;
 		}
+		int *gossip_ret;
 
+		// Generate ID for the initiated enclave
+		generate_enclave_id(eid);
+
+		// Run the enclave functionality based on the input
 	    while ((opt = getopt(argc, argv, "pv")) != -1) {
     	    switch (opt) {
-        	case 'p': do_attestation(eid, &config); break;
-        	case 'v': do_verification(eid); break;
+        	case 'p': 
+				// run_gossip_client(eid, gossip_ret);
+				do_attestation(eid, &config); 
+				// sgx_accept(eid, gossip_ret);
+				break;
+        	case 'v': 
+				// run_gossip_server(eid, gossip_ret);
+				do_verification(eid); 
+				break;
 	        default:
     	        fprintf(stderr, "Usage: %s [-p] for prover, [-v] for verifier.\n", argv[0]);
         	    exit(EXIT_FAILURE);

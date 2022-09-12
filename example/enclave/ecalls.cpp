@@ -30,6 +30,8 @@ int sgx_connect();
 int sgx_accept();
 void ssl_conn_init();
 void ssl_conn_teardown();
+int run_gossip_server();
+int run_gossip_client();
 void ssl_conn_handle(long int thread_id, thread_info_t *thread_info);
 int verifier_step1(uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, sgx_ra_msg2_t *msg2, char **sigrl);
 int verifier_step2(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t **msg3, size_t msg3_size, ra_msg4_t *msg4);
@@ -53,12 +55,23 @@ int sgx_connect()
     headers[0] = "Host: api.trustedservices.intel.com";
     headers[1] = "Ocp-Apim-Subscription-Key: 2f4641eb3f334703adafa46c35556505";
 
-    return ssl_client(opt, (request_t) get, headers, 2, NULL, buf, sizeof buf);
+    return ssl_client(opt, (request_t) gossip_req, headers, 2, NULL, buf, sizeof buf);
 }
 
 int sgx_accept()
 {
-    return ssl_server();
+    unsigned char *output;
+    return ssl_server(output);
+}
+
+int run_gossip_server()
+{
+  gossip_server();
+}
+
+int run_gossip_client()
+{
+  gossip_client();
 }
 
 TLSConnectionHandler* connectionHandler;
@@ -86,6 +99,7 @@ int verifier_step2(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t **msg3, size_t msg3_size, 
 sgx_status_t enclave_ra_init(sgx_ec256_public_t key, int b_pse,
 	sgx_ra_context_t *ctx, sgx_status_t *pse_status)
 {
+  mbedtls_printf("Initiating enclaves\n");
 	sgx_status_t ra_status;
 
 	/*
@@ -94,6 +108,8 @@ sgx_status_t enclave_ra_init(sgx_ec256_public_t key, int b_pse,
 	 */
 
 	ra_status= sgx_ra_init(&key, 0, ctx);
+  // Create the ID to be associated with this enclave for gossiping
+  generate_enclave_id();
 
 	return ra_status;
 }

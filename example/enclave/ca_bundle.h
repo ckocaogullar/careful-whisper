@@ -3,6 +3,44 @@
 #ifndef MBEDTLS_EXAMPLE_TRUSTED_CERTS_H
 #define MBEDTLS_EXAMPLE_TRUSTED_CERTS_H
 
+// Self-signed CA certificate for peer-to-peer attestation. Taken from rootCA.crt
+#define p2p_self_signed_ca \
+"-----BEGIN CERTIFICATE-----\r\n"\
+"MIIGFzCCA/+gAwIBAgIUUKE3W4gglh4fWZB2s43kjWemoCEwDQYJKoZIhvcNAQEL\r\n"\
+"BQAwgZoxCzAJBgNVBAYTAlVLMRcwFQYDVQQIDA5DYW1icmlkZ2VzaGlyZTESMBAG\r\n"\
+"A1UEBwwJQ2FtYnJpZGdlMRgwFgYDVQQKDA9DYXJlZnVsIFdoaXNwZXIxGjAYBgNV\r\n"\
+"BAMMEUNlcmVuIEtvY2FvZ3VsbGFyMSgwJgYJKoZIhvcNAQkBFhljZXJlbi5rb2Nh\r\n"\
+"b2d1bGxhckBhcm0uY29tMB4XDTIyMDkwNzEwMDQxMVoXDTI1MDYyNzEwMDQxMVow\r\n"\
+"gZoxCzAJBgNVBAYTAlVLMRcwFQYDVQQIDA5DYW1icmlkZ2VzaGlyZTESMBAGA1UE\r\n"\
+"BwwJQ2FtYnJpZGdlMRgwFgYDVQQKDA9DYXJlZnVsIFdoaXNwZXIxGjAYBgNVBAMM\r\n"\
+"EUNlcmVuIEtvY2FvZ3VsbGFyMSgwJgYJKoZIhvcNAQkBFhljZXJlbi5rb2Nhb2d1\r\n"\
+"bGxhckBhcm0uY29tMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAyWMk\r\n"\
+"7btiRD4NX1ad3jDUjU4TNI4ViELIIlOuWdTNwMOFXK3BYsHVmQ0DUjQAcv6Hvwos\r\n"\
+"tY3QwUr8bMJiQT9ijAXBO38jtPpWbBS3TPc+LI7FUhC8pgkaRPgGW0TFQnc7b/J5\r\n"\
+"EmwISl1gsHWe3q/bFqBuFQC5e4v56KIFYshUuySYQNUUqdfe37zyq6+YxlbAOJcL\r\n"\
+"yl627ypPw8pDjWzhl1yTpfz5T6Cjo/if76464LJmQkPnyysDRgD583ijxnlKenMB\r\n"\
+"JNQJFjMWtfhYwQSxWVBHlJVxLsUBx6QRxG/a/I+Q2Qa2/wy3zG3xpa+u6Kzx6Jj+\r\n"\
+"dQiWkfW/wYzdiNbpyL3abHe8Ouf3u5Tm6z31RQyEf3fBQEkZLCAZsrSA5fuPUV41\r\n"\
+"l5xFwOeBQ0t+gmG9YvWPhIdw1SOhXb0zFA1UZ9JjNGkNO8P4dDt35quxQ/1O0NEG\r\n"\
+"KY6y4Zer0z19vMf1+RJeLHIbwJ5/ugogtgyM3Wnyp32TSnfZ575cycmerHyjCFDS\r\n"\
+"5hE8KKW4f+PAZM8rpnbBOq5+Ef3Rboz/EZxj4gVC4XWRlz5zZwWwWZ0cCrOBmvWK\r\n"\
+"m6iDKwwmfTMOQ1lURoqNh921E7dKPH0dVDiGXpysluo6u8Igjgb0/StCqowK0it1\r\n"\
+"NsP2BpZWZWGRLPAi91v0keWECUv+v7/olHRhxEMCAwEAAaNTMFEwHQYDVR0OBBYE\r\n"\
+"FGScIs0ape5csLn6USyQLHvdBjYhMB8GA1UdIwQYMBaAFGScIs0ape5csLn6USyQ\r\n"\
+"LHvdBjYhMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggIBACHX+3L3\r\n"\
+"b5hf99JJJyqkguqK7b5hL4mSRBbWu3DZgn0eUo/z0AUMgI7LJ8LeU7bqBEgJ1RNd\r\n"\
+"JerTx+TZSxVYd9yKPXht82MkqsPQW7iiKbBU9Mj1Yw0X5of/BvL3BF5AeMrsyvWp\r\n"\
+"BgiFIRE1Bmz6rXCEAwwvVTtE3i/F5dFM4MRR4hvZfbmJQxdZxw2TPup/qDp+GTCd\r\n"\
+"Wu98DCOhcOQpEq/CGF+1ODpTZHenv+TPQ8pJ4JeeNcNkuWqeWkQ2IbKD7tqxwzM8\r\n"\
+"zrNtXTGCn6rZSZrzyg1kKS8ecR2K5lV41UbZa7TgGqRA3DnskjOAb6g7+zVbY8gO\r\n"\
+"rRvztcmKbNYW7bKuonS9W8z0VSV5nL27NytpaDSJR77NAfQ3QA4bRc/03nU/ggoM\r\n"\
+"2YXVAg1s9NErT/3y7F+qMFIASu+j7y64wIueZJRDeSIOe3PpAaBZdhZLuighQIL3\r\n"\
+"gIBhGuW5dp+emNVEWn0rC1x/bSK8U6advFJKDvHL2kEippH4ZZ4xhI1RbPnt62hw\r\n"\
+"OV+kCaaabVlLuEL4E4Jim+KWAmOqPMe6LgQq3XHRUOBhUaTTRNcOIlTL9p7KiLk+\r\n"\
+"+4Ck9yR4e5Hgw+zGbbzTQI6+CRY+h8LVJ81B+bvcHVSC7mON8Abm2PK/6B2cwULa\r\n"\
+"n6snQ62ZdGcw4B4ZYJod/f5tAvCdp8Hh0f0O\r\n"\
+"-----END CERTIFICATE-----\r\n"
+
 #define mozilla_ca_bundle \
 "##\r\n"\
 "## Bundle of CA Root Certificates\r\n"\

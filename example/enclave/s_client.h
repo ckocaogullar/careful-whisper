@@ -23,6 +23,9 @@ extern "C" {
 
 int process_msg01(uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, sgx_ra_msg2_t *msg2, char **sigrl);
 int process_msg3(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t **msg3, size_t msg3_size, ra_msg4_t *msg4);
+void generate_enclave_id();
+int gossip_server();
+int gossip_client();
 
 #if defined(__cplusplus)
 }

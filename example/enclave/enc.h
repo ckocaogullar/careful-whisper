@@ -53,7 +53,8 @@
 
 typedef enum {
     get,
-    post
+    post,
+    gossip_req
  } request_t;
 
 typedef struct options

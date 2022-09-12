@@ -61,6 +61,7 @@
 #include "sgx_tkey_exchange.h"
 #include "sgx_tcrypto.h"
 #include "sgx_quote.h"
+#include "s_server.h"
 #include "jsmn.h"
 #include "picohttpparser/picohttpparser.h"
 
@@ -68,11 +69,17 @@
 #include <stdlib.h>
 #include "string.h"
 
+#include "gossiping.h"
+
 // Modify the following setting values with the correct values
 #define SPID "347A02ABAE509A6E43E376C7250FAE99"
 #define IAS_PRIMARY_SUBSCRIPTION_KEY "a86c71cb05af4c33a7bf9ec34e8ccd64"
 #define IAS_SECONDARY_SUBSCRIPTION_KEY "bc86eeb48ae144d0926d98f74228b8e2"
-#define IAS_REPORT_SIGNING_CA_FILE "Intel_SGX_Attestation_RootCA.pem"
+// #define IAS_REPORT_SIGNING_CA_FILE "Intel_SGX_Attestation_RootCA.pem"
+// Length of the randomly generated enclave ID
+#define ID_LEN 10
+// Maximum number of the list of trusted enclaves
+#define NUM_MAX_TRUSTED_IDS 10
 
 // Modify these for a different policy file, if needed.
 #define MRSIGNER "bd71c6380ef77c5417e8b2d1ce2d4b6504b9f418e5049342440cfff2443d95bd"
@@ -86,6 +93,13 @@ sgx_cmac_128bit_tag_t smk;
 sgx_cmac_128bit_tag_t kdk;
 sgx_ec256_private_t p_private;
 sgx_ec256_public_t p_public;
+
+// The enclave ID used for gossiping
+char enclave_id[ID_LEN + 1];
+// List of trusted enclave IDs, initialized to hold 10 values
+char *trusted_ids[NUM_MAX_TRUSTED_IDS];
+// Number of trusted IDs, initially set to 0
+int num_trusted_ids = 0;
 
 static const unsigned char def_service_private_key[32] = {
     0x90, 0xe7, 0x6c, 0xbb, 0x2d, 0x52, 0xa1, 0xce,
@@ -586,7 +600,10 @@ int ssl_client(client_opt_t opt, request_t req_type, char *headers[], int n_head
     // load trusted crts
 
 #include "ca_bundle.h"
-
+        // mbedtls_printf("%s", p2p_self_signed_ca);
+        // ret = mbedtls_x509_crt_parse(&cacert,
+        //                              (const unsigned char *)p2p_self_signed_ca,
+        //                              strlen(p2p_self_signed_ca) + 1);
         ret = mbedtls_x509_crt_parse(&cacert,
                                      (const unsigned char *)mozilla_ca_bundle,
                                      sizeof mozilla_ca_bundle);
@@ -928,6 +945,11 @@ send_request:
         len = mbedtls_snprintf((char *)buf, sizeof(buf) - 1, POST_REQUEST,
                                opt.request_page);
     }
+    else if (req_type == (request_t)gossip_req)
+    {
+        // f the request is a gossip request, only send the body, without any special characters around it.
+        len = mbedtls_snprintf((char *)buf, sizeof(buf) - 1, "%s", body);
+    }
 
     if (headers && n_header > 0)
     {
@@ -936,23 +958,24 @@ send_request:
             len += mbedtls_snprintf((char *)buf + len, sizeof(buf) - 1 - len, "%s\r\n", headers[i]);
         }
     }
-    if (body != "\0")
+    // For non-gossip requests, if there is a body, format it as below
+    if ((req_type == (request_t)get || req_type == (request_t)post) && body != "\0")
     {
         len += mbedtls_snprintf((char *)buf + len, sizeof(buf) - 1 - len, "\r\n%s\r\n", body);
+
+        tail_len = (int)strlen(GET_REQUEST_END);
+
+        /* Add padding to GET request to reach opt.request_size in length */
+        if (opt.request_size != DFL_REQUEST_SIZE &&
+            len + tail_len < opt.request_size)
+        {
+            memset(buf + len, 'A', opt.request_size - len - tail_len);
+            len += opt.request_size - len - tail_len;
+        }
+
+        strncpy((char *)buf + len, GET_REQUEST_END, sizeof(buf) - len - 1);
+        len += tail_len;
     }
-
-    tail_len = (int)strlen(GET_REQUEST_END);
-
-    /* Add padding to GET request to reach opt.request_size in length */
-    if (opt.request_size != DFL_REQUEST_SIZE &&
-        len + tail_len < opt.request_size)
-    {
-        memset(buf + len, 'A', opt.request_size - len - tail_len);
-        len += opt.request_size - len - tail_len;
-    }
-
-    strncpy((char *)buf + len, GET_REQUEST_END, sizeof(buf) - len - 1);
-    len += tail_len;
 
     /* Truncate if request size is smaller than the "natural" size */
     if (opt.request_size != DFL_REQUEST_SIZE &&
@@ -1021,7 +1044,9 @@ send_request:
         {
             len = length - 1;
             memset(output, 0, length);
+            mbedtls_printf("I will now try to read the HTTP response\n");
             ret = mbedtls_ssl_read(&ssl, output, len);
+            mbedtls_printf("Here is the HTTP response\n");
 
             if (ret == MBEDTLS_ERR_SSL_WANT_READ ||
                 ret == MBEDTLS_ERR_SSL_WANT_WRITE)
@@ -1293,7 +1318,7 @@ int parse_response(char buf[], char *body, size_t slen)
     char *body_end;
     num_headers = sizeof(parsed_headers) / sizeof(parsed_headers[0]);
     num_response_elements = sizeof(response_body) / sizeof(response_body[0]);
-   
+
     // Test response
     // char *buff = "HTTP/1.1 200 OK\r\nDate: Fri, 31 Dec 1999 23:59:59 GMT\r\nContent-Type: text/plain\r\nContent-Length: 42\r\n\r\nabcdefghijklmnopqrstuvwxyz1234567890abcdef\r\n";
 
@@ -1453,6 +1478,24 @@ char *itoa(int num, char *str, int base)
     reverse(str, i);
 
     return str;
+}
+
+void generate_enclave_id()
+{
+    mbedtls_printf("Generating random enclave ID...\n");
+    const char chars[] = "abcdefghijklmnopqrstuvwxyz1234567890";
+    int c = 0;
+    int num_chars = sizeof(chars) - 1;
+    mbedtls_printf("Num chars is %d\n", num_chars);
+    for (int i = 0; i < ID_LEN; i++)
+    {
+        c = rand() % num_chars;
+        c = c < 0 ? c + num_chars : c;
+        enclave_id[i] = chars[c];
+        // mbedtls_printf("picked the character %c for index %d\n", chars[c], c);
+    }
+    enclave_id[ID_LEN] = '\0';
+    // mbedtls_printf("Generated enclave ID: %s\n", enclave_id);
 }
 
 int process_msg3(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t **msg3, size_t msg3_size, ra_msg4_t *msg4)
@@ -1624,16 +1667,16 @@ int process_msg3(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t **msg3, size_t msg3_size, ra
     /* Get attestation report from Intel IAS server */
     client_opt_t opt;
     char buf[10024];
-    char *body = (char*)malloc((strlen(b64quote) + strlen("{\"isvEnclaveQuote\":\"\"}"))*sizeof(char));
+    char *body = (char *)malloc((strlen(b64quote) + strlen("{\"isvEnclaveQuote\":\"\"}")) * sizeof(char));
     client_opt_init(&opt);
     opt.debug_level = 1;
     opt.server_addr = "api.trustedservices.intel.com";
     opt.request_page = "/sgx/dev/attestation/v4/report HTTP/1.1";
-    char* http_headers[4];
+    char *http_headers[4];
     http_headers[0] = "Host: api.trustedservices.intel.com";
     http_headers[1] = "Ocp-Apim-Subscription-Key: a86c71cb05af4c33a7bf9ec34e8ccd64";
     http_headers[2] = "Content-Type: application/json";
-    http_headers[3] = (char*)malloc(20);
+    http_headers[3] = (char *)malloc(20);
     char content_length[5];
 
     // Create the request body
@@ -1647,13 +1690,13 @@ int process_msg3(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t **msg3, size_t msg3_size, ra
     strncat(http_headers[3], content_length, strlen(content_length));
 
     // Make HTTP request to IAS from inside the enclave
-    ssl_client(opt, (request_t) post, http_headers, 4, body, buf, sizeof buf);
+    ssl_client(opt, (request_t)post, http_headers, 4, body, buf, sizeof buf);
 
     // Parse the response to learn the response body
     size_t slen = sizeof(buf) - 1;
-    char *response_body = malloc(strlen (buf)); 
+    char *response_body = malloc(strlen(buf));
     parse_response(buf, response_body, slen);
-    
+
     mbedtls_printf("\n++++ Attestation report is:          %s\n", response_body);
     struct phr_header parsed_response_body[5];
     int num_response_elements;
@@ -1666,8 +1709,7 @@ int process_msg3(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t **msg3, size_t msg3_size, ra
 
     // Parse the JSON attestation report
     num_response_elements = jsmn_parse(&parser, response_body, strlen(response_body), tokens, 256);
-    
-    
+
     for (int i = 0; i != num_response_elements; ++i)
     {
         strncpy(temp_str, response_body + tokens[i].start, tokens[i].end - tokens[i].start);
@@ -1675,55 +1717,60 @@ int process_msg3(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t **msg3, size_t msg3_size, ra
         // Find quote status and add to msg4
         if (strcmp(temp_str, "isvEnclaveQuoteStatus") == 0)
         {
-            strncpy(quote_status, response_body + tokens[i+1].start, tokens[i+1].end - tokens[i+1].start);
+            strncpy(quote_status, response_body + tokens[i + 1].start, tokens[i + 1].end - tokens[i + 1].start);
         }
-        
+
         // Find ISV Blob Info and add to msg4
-        
-        if (strcmp(temp_str, "platformInfoBlob") == 0){
-            
-            strncpy(temp_str, response_body + tokens[i+1].start, tokens[i+1].end - tokens[i+1].start);
+
+        if (strcmp(temp_str, "platformInfoBlob") == 0)
+        {
+
+            strncpy(temp_str, response_body + tokens[i + 1].start, tokens[i + 1].end - tokens[i + 1].start);
 
             /* The platformInfoBlob has two parts, a TVL Header (4 bytes),
-            * and TLV Payload (variable) */
-            strncpy(pibBuff, temp_str + (4*2), strlen(temp_str) - (4*2));
+             * and TLV Payload (variable) */
+            strncpy(pibBuff, temp_str + (4 * 2), strlen(temp_str) - (4 * 2));
 
             /* remove the TLV Header (8 base16 chars, ie. 4 bytes) from
-            * the PIB Buff. Copy the rest. */
-            
+             * the PIB Buff. Copy the rest. */
+
             int ret = strncpy((unsigned char *)&msg4->platformInfoBlob, pibBuff, strlen(pibBuff));
 
             break;
         }
 
         memset(temp_str, 0, strlen(temp_str));
-
-	
     }
     mbedtls_printf("\n++++ Quote status is: %s\n", quote_status);
-     mbedtls_printf("\n++++ PIB is: %s\n", pibBuff);
+    mbedtls_printf("\n++++ PIB is: %s\n", pibBuff);
 
     memset(msg4, 0, sizeof(ra_msg4_t));
 
-	if (strcmp(quote_status, "OK") == 0) {
-		msg4->status = Trusted;
-		mbedtls_printf("Enclave TRUSTED\n");
-	} else if (strcmp(quote_status, "CONFIGURATION_NEEDED") == 0) {
+    if (strcmp(quote_status, "OK") == 0)
+    {
+        msg4->status = Trusted;
+        mbedtls_printf("Enclave TRUSTED\n");
+    }
+    else if (strcmp(quote_status, "CONFIGURATION_NEEDED") == 0)
+    {
         mbedtls_printf("Enclave TRUSTED and COMPLICATED - Reason: %s\n",
-            quote_status);
+                       quote_status);
         msg4->status = Trusted_ItsComplicated;
-	} else if (strcmp(quote_status, "GROUP_OUT_OF_DATE") == 0) {
-		msg4->status = NotTrusted_ItsComplicated;
-		mbedtls_printf("Enclave NOT TRUSTED and COMPLICATED - Reason: %s\n",
-			quote_status);
-	} else {
-		msg4->status = NotTrusted;
-		mbedtls_printf("Enclave NOT TRUSTED - Reason: %s\n",
-			quote_status);
-	}
+    }
+    else if (strcmp(quote_status, "GROUP_OUT_OF_DATE") == 0)
+    {
+        msg4->status = NotTrusted_ItsComplicated;
+        mbedtls_printf("Enclave NOT TRUSTED and COMPLICATED - Reason: %s\n",
+                       quote_status);
+    }
+    else
+    {
+        msg4->status = NotTrusted;
+        mbedtls_printf("Enclave NOT TRUSTED - Reason: %s\n",
+                       quote_status);
+    }
 
     return 1;
-
 }
 
 // The first function called by the verifier
@@ -1881,7 +1928,7 @@ int process_msg01(uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, sgx
 
     // Parse the response to learn the SigRL
     size_t slen = sizeof(buf) - 1;
-    char *test_body = malloc(strlen (buf)); 
+    char *test_body = malloc(strlen(buf));
     parse_response(buf, test_body, slen);
     strncpy(*sigrl, test_body, strlen(test_body));
     mbedtls_printf("SigRL is %s\n", *sigrl);
@@ -1944,4 +1991,34 @@ int process_msg01(uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, sgx
     mbedtls_printf("\n");
 
     return 1;
+}
+
+int gossip_server()
+{
+    mbedtls_printf("Enclave ID is: %s\n", enclave_id);
+    char peer_id[ID_LEN];
+    ssl_server(peer_id);
+    mbedtls_printf("Peer id received: %s\n", peer_id);
+    is_trusted(peer_id, trusted_ids, num_trusted_ids);
+}
+
+int gossip_client()
+{
+    mbedtls_printf("Enclave ID: %s\n", enclave_id);
+
+    client_opt_t opt;
+    char buf[1024];
+    client_opt_init(&opt);
+    opt.debug_level = 1;
+    opt.server_name = "localhost";
+    opt.server_addr = "localhost";
+    opt.server_port = "4433";
+    char body[ID_LEN];
+    strncpy(body, enclave_id, strlen(enclave_id));
+    // TODO: Add correct SSL certificate checking
+    opt.auth_mode = "optional";
+
+    // Make HTTP request the peer server
+    ssl_client(opt, (request_t)gossip_req, NULL, 0, body, buf, sizeof buf);
+    mbedtls_printf("Client ended\n");
 }

@@ -63,6 +63,8 @@ int main( void )
 #include "mbedtls/debug.h"
 //#include "mbedtls/timing.h"
 
+#include "ca_bundle.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

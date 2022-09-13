@@ -958,10 +958,10 @@ send_request:
             len += mbedtls_snprintf((char *)buf + len, sizeof(buf) - 1 - len, "%s\r\n", headers[i]);
         }
     }
-    // For non-gossip requests, if there is a body, format it as below
-    if ((req_type == (request_t)get || req_type == (request_t)post) && body != "\0")
+    // For non-gossip requests, if format properly for HTTP
+    if (req_type == (request_t)get || req_type == (request_t)post)
     {
-        len += mbedtls_snprintf((char *)buf + len, sizeof(buf) - 1 - len, "\r\n%s\r\n", body);
+        if(body != "\0") len += mbedtls_snprintf((char *)buf + len, sizeof(buf) - 1 - len, "\r\n%s\r\n", body);
 
         tail_len = (int)strlen(GET_REQUEST_END);
 

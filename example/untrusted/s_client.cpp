@@ -661,12 +661,12 @@ int ret;
 	    while ((opt = getopt(argc, argv, "pv")) != -1) {
     	    switch (opt) {
         	case 'p': 
-				// run_gossip_client(eid, gossip_ret);
+				run_gossip_client(eid, gossip_ret);
 				do_attestation(eid, &config); 
 				// sgx_accept(eid, gossip_ret);
 				break;
         	case 'v': 
-				// run_gossip_server(eid, gossip_ret);
+				run_gossip_server(eid, gossip_ret);
 				do_verification(eid); 
 				break;
 	        default:

@@ -656,17 +656,23 @@ int ret;
 
 		// Generate ID for the initiated enclave
 		generate_enclave_id(eid);
+		int returned;
 
 		// Run the enclave functionality based on the input
 	    while ((opt = getopt(argc, argv, "pv")) != -1) {
     	    switch (opt) {
         	case 'p': 
-				run_gossip_client(eid, gossip_ret);
+				returned = run_gossip_client(eid, gossip_ret);
+				printf("run_gossip_client returned %d", ret);
+				// run_gossip_client(eid, gossip_ret);
+				do_attestation(eid, &config); 
 				do_attestation(eid, &config); 
 				// sgx_accept(eid, gossip_ret);
 				break;
         	case 'v': 
-				run_gossip_server(eid, gossip_ret);
+				returned = run_gossip_server(eid, gossip_ret);
+				printf("run_gossip_server returned %d", ret);
+				// run_gossip_client(eid, gossip_ret);
 				do_verification(eid); 
 				break;
 	        default:

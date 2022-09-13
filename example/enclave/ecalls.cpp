@@ -66,12 +66,12 @@ int sgx_accept()
 
 int run_gossip_server()
 {
-  gossip_server();
+  return gossip_server();
 }
 
 int run_gossip_client()
 {
-  gossip_client();
+  return gossip_client();
 }
 
 TLSConnectionHandler* connectionHandler;

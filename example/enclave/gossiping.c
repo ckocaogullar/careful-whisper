@@ -3,7 +3,7 @@
 #include "mbedtls/platform.h"
 
 // Check if the ID is already in the list of trusted IDs. Return 1 if trusted, return 0 otherwise
-int is_trusted(char *id, char **trusted_ids, int num_trusted_ids){
+void is_trusted(char *id, char **trusted_ids, int num_trusted_ids){
     for(int i=0; i<num_trusted_ids; i++){
         // Trusted
         if(strcmp(trusted_ids[i], id)==0){
@@ -13,7 +13,6 @@ int is_trusted(char *id, char **trusted_ids, int num_trusted_ids){
     }
     // Not trusted
     mbedtls_printf("%s is not in the list of trusted enclaves\n", id);
-    return 0;
 }
 
 // Adding the given ID to the list of trusted enclaves

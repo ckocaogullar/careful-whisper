@@ -2253,29 +2253,30 @@ close_notify:
     // goto reset;
 
     // CEREN: Modified to finish after a single round of data exchange with the client
-    goto exit;
+    // goto exit;
 
     /*
      * Cleanup and exit
      */
 usage:
-    if( ret == 0 )
-        ret = 1;
+mbedtls_printf("Usage placeholder\n");
+//     if( ret == 0 )
+//         ret = 1;
 
-    mbedtls_printf( USAGE );
+//     mbedtls_printf( USAGE );
 
-    list = mbedtls_ssl_list_ciphersuites();
-    while( *list )
-    {
-        mbedtls_printf(" %-42s", mbedtls_ssl_get_ciphersuite_name( *list ) );
-        list++;
-        if( !*list )
-            break;
-        mbedtls_printf(" %s\n", mbedtls_ssl_get_ciphersuite_name( *list ) );
-        list++;
-    }
-    mbedtls_printf("\n");
-    goto exit;
+//     list = mbedtls_ssl_list_ciphersuites();
+//     while( *list )
+//     {
+//         mbedtls_printf(" %-42s", mbedtls_ssl_get_ciphersuite_name( *list ) );
+//         list++;
+//         if( !*list )
+//             break;
+//         mbedtls_printf(" %s\n", mbedtls_ssl_get_ciphersuite_name( *list ) );
+//         list++;
+//     }
+//     mbedtls_printf("\n");
+//     goto exit;
 exit:
 #ifdef MBEDTLS_ERROR_C
     if( ret != 0 )
@@ -2342,7 +2343,6 @@ exit:
     // Shell can not handle large exit numbers -> 1 for errors
     if( ret < 0 )
         ret = 1;
-
     return( ret );
 }
 #endif /* MBEDTLS_BIGNUM_C && MBEDTLS_ENTROPY_C && MBEDTLS_SSL_TLS_C &&

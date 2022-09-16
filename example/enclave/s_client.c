@@ -1997,12 +1997,12 @@ int process_msg01(uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, sgx
 int gossip_server()
 {
     mbedtls_printf("Enclave ID is: %s\n", enclave_id);
-    // char peer_id[ID_LEN];
+    char peer_id[ID_LEN+1];
     // int ret = ssl_server(peer_id);
-    int ret = ssl_server();
+    int ret = ssl_server(peer_id);
     mbedtls_printf("ssl_server returned %d\n", ret);
-    // mbedtls_printf("Peer id received: %s\n", peer_id);
-    // is_trusted(peer_id, trusted_ids, num_trusted_ids);
+    mbedtls_printf("Peer id received: %s\n", peer_id);
+    is_trusted(peer_id, trusted_ids, num_trusted_ids);
     mbedtls_printf("Finished checking the trusted list\n");
     return 1;
 }

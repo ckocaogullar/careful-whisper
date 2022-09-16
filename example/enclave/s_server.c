@@ -782,7 +782,7 @@ void term_handler( int sig )
 }
 #endif
 
-int ssl_server()
+int ssl_server(char *output)
 {
     int ret = 0, len, written, frags, exchanges_left;
     int version_suites[4][2];
@@ -2063,7 +2063,8 @@ data_exchange:
                 len = ret;
                 buf[len] = '\0';
                 mbedtls_printf( " %d bytes read\n\n%s\n", len, (char *) buf );
-
+                strncpy(output, buf, strlen(buf));
+                mbedtls_printf("Output is %s\n", output);
                 /* End of message should be detected according to the syntax of the
                  * application protocol (eg HTTP), just use a dummy test here. */
                 // if( buf[len - 1] == '\n' )

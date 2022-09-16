@@ -60,8 +60,8 @@ int sgx_connect()
 
 int sgx_accept()
 {
-    unsigned char *output;
-    return ssl_server();
+    char *output;
+    return ssl_server(output);
 }
 
 int run_gossip_server()

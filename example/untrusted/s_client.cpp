@@ -341,21 +341,21 @@ int do_attestation(sgx_enclave_id_t eid, config_t *config)
 
 	printf("Eid is %d\n", eid);
 
-	// if (config->server == NULL)
-	// {
-	// 	msgio = new MsgIO();
-	// }
-	// else
-	// {
-	// 	try
-	// 	{
-	// 		msgio = new MsgIO(config->server, (config->port == NULL) ? DEFAULT_PORT : config->port);
-	// 	}
-	// 	catch (...)
-	// 	{
-	// 		exit(1);
-	// 	}
-	// }
+	if (config->server == NULL)
+	{
+		msgio = new MsgIO();
+	}
+	else
+	{
+		try
+		{
+			msgio = new MsgIO(config->server, (config->port == NULL) ? DEFAULT_PORT : config->port);
+		}
+		catch (...)
+		{
+			exit(1);
+		}
+	}
 
 	/*
 	 * WARNING! Normally, the public key would be hardcoded into the
@@ -668,7 +668,7 @@ int ret;
 				printf("run_gossip_client returned %d\n", gossip_ret);
 				// run_gossip_client(eid, gossip_ret);
 				// do_verification(eid); 
-				// do_attestation(eid, &config);  
+				do_attestation(eid, &config);  
 				// sgx_accept(eid, gossip_ret);
 				break;
         	case 'v': 
@@ -676,8 +676,8 @@ int ret;
 				printf("here is good\n");
 				printf("run_gossip_server returned %d\n", gossip_ret);
 				// run_gossip_client(eid, gossip_ret);
-				// do_verification(eid);
-				do_attestation(eid, &config);  
+				do_verification(eid);
+				// do_attestation(eid, &config);  
 				break;
 	        default:
     	        fprintf(stderr, "Usage: %s [-p] for prover, [-v] for verifier.\n", argv[0]);

@@ -100,6 +100,8 @@ char enclave_id[ID_LEN + 1];
 char *trusted_ids[NUM_MAX_TRUSTED_IDS];
 // Number of trusted IDs, initially set to 0
 int num_trusted_ids = 0;
+// ID of the peer that we are currently talking to
+char peer_id[ID_LEN+1];
 
 static const unsigned char def_service_private_key[32] = {
     0x90, 0xe7, 0x6c, 0xbb, 0x2d, 0x52, 0xa1, 0xce,
@@ -1708,6 +1710,8 @@ int process_msg3(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t **msg3, size_t msg3_size, ra
     char temp_str[1024];
     char pibBuff[1024];
 
+    memset(quote_status, 0, 1024);
+
     // Parse the JSON attestation report
     num_response_elements = jsmn_parse(&parser, response_body, strlen(response_body), tokens, 256);
 
@@ -1758,7 +1762,8 @@ int process_msg3(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t **msg3, size_t msg3_size, ra
                        quote_status);
         msg4->status = Trusted_ItsComplicated;
     }
-    else if (strcmp(quote_status, "GROUP_OUT_OF_DATE") == 0)
+    
+    else if (strcmp(quote_status, "GROUP_OUT_OF_DATE") == 0 || strcmp(quote_status, "CONFIGURATION_AND_SW_HARDENING_NEEDED") == 0)
     {
         msg4->status = NotTrusted_ItsComplicated;
         mbedtls_printf("Enclave NOT TRUSTED and COMPLICATED - Reason: %s\n",
@@ -1770,6 +1775,10 @@ int process_msg3(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t **msg3, size_t msg3_size, ra
         mbedtls_printf("Enclave NOT TRUSTED - Reason: %s\n",
                        quote_status);
     }
+
+    // TODO: Add enclave as trusted only if it's actually trusted
+    // Currently adding it in any case, because this is a PoC application
+    add_as_trusted(peer_id, trusted_ids, &num_trusted_ids);
 
     return 1;
 }
@@ -1997,7 +2006,6 @@ int process_msg01(uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, sgx
 int gossip_server()
 {
     mbedtls_printf("Enclave ID is: %s\n", enclave_id);
-    char peer_id[ID_LEN+1];
     // int ret = ssl_server(peer_id);
     int ret = ssl_server(peer_id);
     mbedtls_printf("ssl_server returned %d\n", ret);

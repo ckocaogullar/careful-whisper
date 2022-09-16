@@ -1997,10 +1997,11 @@ int process_msg01(uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, sgx
 int gossip_server()
 {
     mbedtls_printf("Enclave ID is: %s\n", enclave_id);
-    char peer_id[ID_LEN];
-    int ret = ssl_server(peer_id);
+    // char peer_id[ID_LEN];
+    // int ret = ssl_server(peer_id);
+    int ret = ssl_server();
     mbedtls_printf("ssl_server returned %d\n", ret);
-    mbedtls_printf("Peer id received: %s\n", peer_id);
+    // mbedtls_printf("Peer id received: %s\n", peer_id);
     // is_trusted(peer_id, trusted_ids, num_trusted_ids);
     mbedtls_printf("Finished checking the trusted list\n");
     return 1;
@@ -2017,13 +2018,14 @@ int gossip_client()
     opt.server_name = "localhost";
     opt.server_addr = "localhost";
     opt.server_port = "4433";
+    opt.auth_mode = MBEDTLS_SSL_VERIFY_OPTIONAL;
     char body[ID_LEN];
     strncpy(body, enclave_id, strlen(enclave_id));
     // TODO: Add correct SSL certificate checking
-    opt.auth_mode = "optional";
+    
 
     // Make HTTP request the peer server
     ssl_client(opt, (request_t)gossip_req, NULL, 0, body, buf, sizeof buf);
-    mbedtls_printf("Client ended\n");
+    mbedtls_printf("Client ended here\n");
     return 1;
 }

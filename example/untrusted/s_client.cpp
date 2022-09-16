@@ -339,21 +339,23 @@ int do_attestation(sgx_enclave_id_t eid, config_t *config)
 	int enclaveTrusted = NotTrusted; // Not Trusted
 	int b_pse = OPT_ISSET(flags, OPT_PSE);
 
-	if (config->server == NULL)
-	{
-		msgio = new MsgIO();
-	}
-	else
-	{
-		try
-		{
-			msgio = new MsgIO(config->server, (config->port == NULL) ? DEFAULT_PORT : config->port);
-		}
-		catch (...)
-		{
-			exit(1);
-		}
-	}
+	printf("Eid is %d\n", eid);
+
+	// if (config->server == NULL)
+	// {
+	// 	msgio = new MsgIO();
+	// }
+	// else
+	// {
+	// 	try
+	// 	{
+	// 		msgio = new MsgIO(config->server, (config->port == NULL) ? DEFAULT_PORT : config->port);
+	// 	}
+	// 	catch (...)
+	// 	{
+	// 		exit(1);
+	// 	}
+	// }
 
 	/*
 	 * WARNING! Normally, the public key would be hardcoded into the
@@ -662,18 +664,20 @@ int ret;
 	    while ((opt = getopt(argc, argv, "pv")) != -1) {
     	    switch (opt) {
         	case 'p': 
-				returned = run_gossip_client(eid, gossip_ret);
-				printf("run_gossip_client returned %d", ret);
+				run_gossip_client(eid, gossip_ret);
+				printf("run_gossip_client returned %d\n", gossip_ret);
 				// run_gossip_client(eid, gossip_ret);
-				do_attestation(eid, &config); 
-				do_attestation(eid, &config); 
+				// do_verification(eid); 
+				// do_attestation(eid, &config);  
 				// sgx_accept(eid, gossip_ret);
 				break;
         	case 'v': 
-				returned = run_gossip_server(eid, gossip_ret);
-				printf("run_gossip_server returned %d", ret);
+				run_gossip_server(eid, gossip_ret);
+				printf("here is good\n");
+				printf("run_gossip_server returned %d\n", gossip_ret);
 				// run_gossip_client(eid, gossip_ret);
-				do_verification(eid); 
+				// do_verification(eid);
+				do_attestation(eid, &config);  
 				break;
 	        default:
     	        fprintf(stderr, "Usage: %s [-p] for prover, [-v] for verifier.\n", argv[0]);

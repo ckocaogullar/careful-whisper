@@ -61,7 +61,7 @@ int sgx_connect()
 int sgx_accept()
 {
     unsigned char *output;
-    return ssl_server(output);
+    return ssl_server();
 }
 
 int run_gossip_server()

@@ -8,7 +8,7 @@ endif(EXISTS "${SGX_PATH}/include/sgx_uae_launch.h")
 
 include_directories(${PROJECT_SOURCE_DIR})
 
-set(CLIENT_SRC_FILES Enclave_u.c s_client.cpp Utils.cpp hexutil.c msgio.cpp common.cpp logfile.c crypto.c)
+set(CLIENT_SRC_FILES Enclave_u.c s_client.cpp Utils.cpp hexutil.c msgio.cpp common.cpp logfile.c crypto.c benchmark.cpp)
 
 set_directory_properties(PROPERTIES
         ADDITIONAL_MAKE_CLEAN_FILES "Enclave_u.c; Enclave_u.h")

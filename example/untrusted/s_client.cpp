@@ -20,6 +20,8 @@
 #include "jsmn.h"
 
 #include <unistd.h>
+#include "benchmark.h"
+#include "settings.h"
 
 using namespace std;
 
@@ -27,7 +29,6 @@ using namespace std;
 
 /* Global EID shared by multiple threads */
 sgx_enclave_id_t eid = 0;
-
 
 typedef struct config_struct
 {
@@ -40,11 +41,7 @@ typedef struct config_struct
 	char *port;
 } config_t;
 
-
-
-// Flag to be set to 0 if the device is a prover, 1 if verifier
-int prover_verifier_flag = -1;
-
+// Options and modes coming from in the example code
 #define MODE_ATTEST 0x0
 #define MODE_EPID 0x1
 #define MODE_QUOTE 0x2
@@ -54,26 +51,22 @@ int prover_verifier_flag = -1;
 #define OPT_LINK 0x04
 #define OPT_PUBKEY 0x08
 
-#define DEF_LIB_SEARCHPATH "/lib:/lib64:/usr/lib:/usr/lib64"
-
-#define SPID "347A02ABAE509A6E43E376C7250FAE99"
-
 #define _rdrand64_step(x) ({ unsigned char err; asm volatile("rdrand %0; setc %1":"=r"(*x), "=qm"(err)); err; })
 
-
-
 /* Macros to set, clear, and get the mode and options */
-
 #define SET_OPT(x, y) x |= y
 #define CLEAR_OPT(x, y) x = x & ~y
 #define OPT_ISSET(x, y) x &y
 
-#define ENCLAVE_NAME "enclave.signed.so"
+// Initialize chronometres for recording time
+chronometre_t gossip_ch, full_attestation_ch, generate_msg1_ch, generate_msg2_ch, generate_msg3_ch, generate_msg4_ch;
 
 int do_verification(sgx_enclave_id_t eid);
 int do_attestation(sgx_enclave_id_t eid, config_t *config);
 int file_in_searchpath(const char *file, const char *search, char *fullpath,
 					   size_t len);
+
+
 sgx_status_t sgx_create_enclave_search(
 	const char *filename,
 	const int edebug,
@@ -315,7 +308,7 @@ int do_verification(sgx_enclave_id_t eid)
 
 	msgio->send_partial((void *)&msg4.status, sizeof(msg4.status));
 	msgio->send(&msg4.platformInfoBlob, sizeof(msg4.platformInfoBlob));
-
+	return 1;
 	}
 }
 
@@ -538,10 +531,6 @@ int do_attestation(sgx_enclave_id_t eid, config_t *config)
 	fprintf(stderr, "Copy/Paste Msg3 Below to SP\n");
 	msgio->send(msg3, msg3_sz);
 
-	// dividerWithText(fplog, "Msg3 ==> SP");
-	// fsend_msg(fplog, msg3, msg3_sz);
-	// divider(fplog);
-
 	if ( msg3 ) {
 		free(msg3);
 		msg3 = NULL;
@@ -586,21 +575,7 @@ int do_attestation(sgx_enclave_id_t eid, config_t *config)
 
 int main(int argc, char **argv)
 {
-int ret;
-
-// 	ret = initialize_enclave(&eid);
-// 	if (ret != 0)
-// 	{
-// 		cerr << "failed to initialize the enclave" << endl;
-// 		exit(-1);
-// 	}
-// 	printf("Enclave %lu created\n", eid);
-// sgx_status_t ecall_ret = sgx_connect(eid, &ret);
-// 	// if (ecall_ret != SGX_SUCCESS) {
-// 	//   cerr << "ecall failed" << endl;
-// 	//   goto exit;
-// 	// }
-
+	int ret;
 	int opt;
 	config_t config;
 	sgx_launch_token_t token = {0};
@@ -614,7 +589,6 @@ int ret;
 
 	memset(&config, 0, sizeof(config));
 	config.mode = MODE_ATTEST;
-
 
 
 		for (i = 0; i < 2; ++i)
@@ -642,7 +616,6 @@ int ret;
 		config.server = strdup("localhost");
 		config.port = "7777";
 
-
 		// Launch the enclave
 		status = sgx_create_enclave_search(ENCLAVE_NAME,
 									   SGX_DEBUG_FLAG, &token, &updated, &eid, 0);
@@ -655,29 +628,48 @@ int ret;
 			return 1;
 		}
 		int *gossip_ret;
-
+		
 		// Generate ID for the initiated enclave
 		generate_enclave_id(eid);
 		int returned;
-
+		long long time;
+	
 		// Run the enclave functionality based on the input
 	    while ((opt = getopt(argc, argv, "pv")) != -1) {
     	    switch (opt) {
         	case 'p': 
+				start_chronometre(&gossip_ch);
 				run_gossip_client(eid, gossip_ret);
-				printf("run_gossip_client returned %d\n", gossip_ret);
-				// run_gossip_client(eid, gossip_ret);
-				// do_verification(eid); 
+				stop_chronometre(&gossip_ch);
+	
+				printf("\n ------------------ GOSSIPING FINISHED, STARTING ATTESTATION ------------------\n");
+				
+				start_chronometre(&full_attestation_ch);
 				do_attestation(eid, &config);  
-				// sgx_accept(eid, gossip_ret);
+				stop_chronometre(&full_attestation_ch);
+				
+				printf("\n ------------------ ATTESTATION FINISHED ------------------\n");
+
+				printf("Time passed for gossiping %d\n", calc_time_passed(gossip_ch));	
+				printf("Time passed for attestation %d\n", calc_time_passed(full_attestation_ch));	
+
 				break;
         	case 'v': 
+				start_chronometre(&gossip_ch);
 				run_gossip_server(eid, gossip_ret);
-				printf("here is good\n");
-				printf("run_gossip_server returned %d\n", gossip_ret);
-				// run_gossip_client(eid, gossip_ret);
+				stop_chronometre(&gossip_ch);
+	
+				printf("\n ------------------ GOSSIPING FINISHED, STARTING VERIFICATION ------------------\n");
+
+				start_chronometre(&full_attestation_ch);
 				do_verification(eid);
-				// do_attestation(eid, &config);  
+				stop_chronometre(&full_attestation_ch);
+				
+				printf("\n ------------------ VERIFICATION FINISHED ------------------\n");
+
+				printf("Time passed for gossiping %d\n", calc_time_passed(gossip_ch));	
+				printf("Time passed for attestation %d\n", calc_time_passed(full_attestation_ch));	
+
 				break;
 	        default:
     	        fprintf(stderr, "Usage: %s [-p] for prover, [-v] for verifier.\n", argv[0]);

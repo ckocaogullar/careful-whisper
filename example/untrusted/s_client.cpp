@@ -630,14 +630,27 @@ int main(int argc, char **argv)
 		int *gossip_ret;
 		
 		// Generate ID for the initiated enclave
-		generate_enclave_id(eid);
+	
 		int returned;
 		long long time;
+		int encalve_id_flag = 0;
 	
 		// Run the enclave functionality based on the input
-	    while ((opt = getopt(argc, argv, "pv")) != -1) {
+	    while ((opt = getopt(argc, argv, "pvi:")) != -1) {
     	    switch (opt) {
+			// Optional ID value for the enclave
+			case 'i':
+				printf("ID provided as OPTARG %s\n", optarg);
+				// Use the provided ID for the initiated enclave
+				generate_enclave_id(eid, optarg, strlen(optarg));
+				encalve_id_flag = 1;
+				break;
+			// The enclave will act as a prover
         	case 'p': 
+				// If ID is not provided as an input, generate random ID
+				if(!encalve_id_flag){
+					generate_enclave_id(eid, NULL, 0);
+				}
 				start_chronometre(&gossip_ch);
 				run_gossip_client(eid, gossip_ret);
 				stop_chronometre(&gossip_ch);
@@ -654,7 +667,12 @@ int main(int argc, char **argv)
 				printf("Time passed for attestation %d\n", calc_time_passed(full_attestation_ch));	
 
 				break;
+			// The enclave will act as a verifier
         	case 'v': 
+				// If ID is not provided as an input, generate random ID
+				if(!encalve_id_flag){
+					generate_enclave_id(eid, NULL, 0);
+				}
 				start_chronometre(&gossip_ch);
 				run_gossip_server(eid, gossip_ret);
 				stop_chronometre(&gossip_ch);

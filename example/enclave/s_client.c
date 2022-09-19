@@ -76,8 +76,7 @@
 #define IAS_PRIMARY_SUBSCRIPTION_KEY "a86c71cb05af4c33a7bf9ec34e8ccd64"
 #define IAS_SECONDARY_SUBSCRIPTION_KEY "bc86eeb48ae144d0926d98f74228b8e2"
 // #define IAS_REPORT_SIGNING_CA_FILE "Intel_SGX_Attestation_RootCA.pem"
-// Length of the randomly generated enclave ID
-#define ID_LEN 10
+
 // Maximum number of the list of trusted enclaves
 #define NUM_MAX_TRUSTED_IDS 10
 
@@ -94,14 +93,19 @@ sgx_cmac_128bit_tag_t kdk;
 sgx_ec256_private_t p_private;
 sgx_ec256_public_t p_public;
 
+// Length of the randomly generated enclave ID. Set to 10 by default. 
+// If there is an ID provided by the user, the value of this parameter is modified accordingly
+int id_len = 10;
 // The enclave ID used for gossiping
-char enclave_id[ID_LEN + 1];
+char *enclave_id;
 // List of trusted enclave IDs, initialized to hold 10 values
 char *trusted_ids[NUM_MAX_TRUSTED_IDS];
 // Number of trusted IDs, initially set to 0
 int num_trusted_ids = 0;
 // ID of the peer that we are currently talking to
-char peer_id[ID_LEN+1];
+// char peer_id[id_len+1];
+char *peer_id;
+
 
 static const unsigned char def_service_private_key[32] = {
     0x90, 0xe7, 0x6c, 0xbb, 0x2d, 0x52, 0xa1, 0xce,
@@ -1483,22 +1487,35 @@ char *itoa(int num, char *str, int base)
     return str;
 }
 
-void generate_enclave_id()
+// Set the enclave id to set_id if it is not empty.
+// Otherwise, generate a random id
+void generate_enclave_id(char *set_id,  int set_id_len)
 {
-    mbedtls_printf("Generating random enclave ID...\n");
-    const char chars[] = "abcdefghijklmnopqrstuvwxyz1234567890";
-    int c = 0;
-    int num_chars = sizeof(chars) - 1;
-    mbedtls_printf("Num chars is %d\n", num_chars);
-    for (int i = 0; i < ID_LEN; i++)
-    {
-        c = rand() % num_chars;
-        c = c < 0 ? c + num_chars : c;
-        enclave_id[i] = chars[c];
-        // mbedtls_printf("picked the character %c for index %d\n", chars[c], c);
+    mbedtls_printf("set_id is %.*s\n", set_id_len, set_id);
+    if(set_id_len != 0){
+        id_len = set_id_len;
+        enclave_id = malloc((id_len + 1) * sizeof(char));
+        strncpy(enclave_id, set_id, set_id_len);
+    } else {
+        mbedtls_printf("No input ID given\n");
+        enclave_id = malloc((id_len + 1) * sizeof(char));
+        mbedtls_printf("Generating random enclave ID...\n");
+        const char chars[] = "abcdefghijklmnopqrstuvwxyz1234567890";
+        int c = 0;
+        int num_chars = sizeof(chars) - 1;
+        mbedtls_printf("Num chars is %d\n", num_chars);
+        for (int i = 0; i < id_len; i++)
+        {
+            c = rand() % num_chars;
+            c = c < 0 ? c + num_chars : c;
+            enclave_id[i] = chars[c];
+            // mbedtls_printf("picked the character %c for index %d\n", chars[c], c);
+        }
+        enclave_id[id_len] = '\0';
+        // mbedtls_printf("Generated enclave ID: %s\n", enclave_id);
     }
-    enclave_id[ID_LEN] = '\0';
-    // mbedtls_printf("Generated enclave ID: %s\n", enclave_id);
+    peer_id = malloc((id_len + 1) * sizeof(char));
+    
 }
 
 int process_msg3(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t **msg3, size_t msg3_size, ra_msg4_t *msg4)
@@ -2027,7 +2044,7 @@ int gossip_client()
     opt.server_addr = "localhost";
     opt.server_port = "4433";
     opt.auth_mode = MBEDTLS_SSL_VERIFY_OPTIONAL;
-    char body[ID_LEN];
+    char body[id_len];
     strncpy(body, enclave_id, strlen(enclave_id));
     // TODO: Add correct SSL certificate checking
     

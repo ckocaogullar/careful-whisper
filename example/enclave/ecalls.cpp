@@ -109,7 +109,7 @@ sgx_status_t enclave_ra_init(sgx_ec256_public_t key, int b_pse,
 
 	ra_status= sgx_ra_init(&key, 0, ctx);
   // Create the ID to be associated with this enclave for gossiping
-  generate_enclave_id();
+  // generate_enclave_id();
 
 	return ra_status;
 }

@@ -1050,9 +1050,7 @@ send_request:
         {
             len = length - 1;
             memset(output, 0, length);
-            mbedtls_printf("I will now try to read the HTTP response\n");
             ret = mbedtls_ssl_read(&ssl, output, len);
-            mbedtls_printf("Here is the HTTP response\n");
 
             if (ret == MBEDTLS_ERR_SSL_WANT_READ ||
                 ret == MBEDTLS_ERR_SSL_WANT_WRITE)
@@ -1081,7 +1079,6 @@ send_request:
 
             len = ret;
             mbedtls_printf("Output is %s\n", output);
-            mbedtls_printf("get %d bytes ending with %x\n", len, output[len - 1]);
             
 #if defined(MBEDTLS_DEBUG_C)
             mbedtls_debug_print_buf(&ssl, 0, __FILE__, __LINE__, "response", output, len);
@@ -1277,7 +1274,6 @@ exit:
     mbedtls_entropy_free(&entropy);
 
     // Shell can not handle large exit numbers -> 1 for errors
-
     return (ret);
 
 usage:
@@ -1725,9 +1721,10 @@ int process_msg3(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t **msg3, size_t msg3_size, ra
     jsmntok_t tokens[256];
     char quote_status[1024];
     char temp_str[1024];
-    char pibBuff[1024];
+    char pibBuff[2048];
 
     memset(quote_status, 0, 1024);
+    memset(pibBuff, 0, 2048);
 
     // Parse the JSON attestation report
     num_response_elements = jsmn_parse(&parser, response_body, strlen(response_body), tokens, 256);
@@ -1749,9 +1746,12 @@ int process_msg3(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t **msg3, size_t msg3_size, ra
 
             strncpy(temp_str, response_body + tokens[i + 1].start, tokens[i + 1].end - tokens[i + 1].start);
 
+            // TODO: Copy the correct information into pibBuffer
             /* The platformInfoBlob has two parts, a TVL Header (4 bytes),
              * and TLV Payload (variable) */
-            strncpy(pibBuff, temp_str + (4 * 2), strlen(temp_str) - (4 * 2));
+            // strncpy(pibBuff, temp_str + (4 * 2), strlen(temp_str) - (4 * 2));
+            // strncpy(pibBuff, temp_str, strlen(temp_str));
+
 
             /* remove the TLV Header (8 base16 chars, ie. 4 bytes) from
              * the PIB Buff. Copy the rest. */
@@ -1796,7 +1796,10 @@ int process_msg3(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t **msg3, size_t msg3_size, ra
     // TODO: Add enclave as trusted only if it's actually trusted
     // Currently adding it in any case, because this is a PoC application
     add_as_trusted(peer_id, trusted_ids, &num_trusted_ids);
-
+    for(int i=0; i<num_trusted_ids; i++){
+        mbedtls_printf("Trusted id %d: %s\n", i, trusted_ids[i]);
+    }
+    mbedtls_printf("Add as trusted worked fine, returning now \n");
     return 1;
 }
 
@@ -2020,15 +2023,80 @@ int process_msg01(uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, sgx
     return 1;
 }
 
+char* generate_gossip_message(){
+    char index[5];
+    char *body = (char *)malloc(2048 * sizeof(char));
+
+    strcpy(body, "{");
+
+    for(int i = 0; i < num_trusted_ids + 1; i++){
+
+        strcat(body, "\"");
+        itoa(i, index, 10);
+        strncat(body, index, strlen(index));
+        strcat(body, "\":\"");
+        // Add your own ID as the first element
+        if(i==0){
+                strncat(body, enclave_id, id_len);
+        } 
+        // Add your trusted enclaves as other elements
+        else if (num_trusted_ids>0){
+            strncat(body, trusted_ids[i-1], strlen(trusted_ids[i-1]));
+        }
+        
+        // If last element, do not put a comma
+        if(i!=num_trusted_ids){
+            strcat(body, "\", ");
+        } else {
+            strcat(body, "\"");
+        }
+    }
+    strcat(body, "}");
+
+    return body;
+}
+
+void process_gossip_response(char *response_body){
+    jsmn_parser parser;
+    jsmn_init(&parser);
+    jsmntok_t tokens[256];
+    char temp_str[256];
+    int num_response_elements;
+
+    // Parse the JSON gossip response
+    num_response_elements = jsmn_parse(&parser, response_body, strlen(response_body), tokens, 256);
+    for (int i = 1; i < num_response_elements; i+=2)
+    {
+        strncpy(temp_str, response_body + tokens[i].start, tokens[i].end - tokens[i].start);
+        // Save the first ID as the peer id
+        if (strcmp(temp_str, "0") == 0)
+        {
+            strncpy(peer_id, response_body + tokens[i + 1].start, tokens[i + 1].end - tokens[i + 1].start);
+        } 
+
+        // Check if the peer is trusted. If so, add its trusted IDs to your own trusted ID list
+        memset(temp_str, 0, strlen(temp_str));
+        strncpy(temp_str, response_body + tokens[i + 1].start, tokens[i + 1].end - tokens[i + 1].start);
+        
+        if(is_trusted(peer_id, trusted_ids, num_trusted_ids)){
+            add_as_trusted(temp_str, trusted_ids, &num_trusted_ids);
+        }
+
+    }
+}
+
 int gossip_server()
 {
     mbedtls_printf("Enclave ID is: %s\n", enclave_id);
-    // int ret = ssl_server(peer_id);
-    int ret = ssl_server(peer_id);
-    mbedtls_printf("ssl_server returned %d\n", ret);
+
+    char *req_body = malloc(2048);
+
+    char *resp_body = generate_gossip_message();
+
+    int ret = ssl_server(req_body, resp_body);
+    process_gossip_response(req_body);
     mbedtls_printf("Peer id received: %s\n", peer_id);
-    is_trusted(peer_id, trusted_ids, num_trusted_ids);
-    mbedtls_printf("Finished checking the trusted list\n");
+    
     return 1;
 }
 
@@ -2043,14 +2111,20 @@ int gossip_client()
     opt.server_name = "localhost";
     opt.server_addr = "localhost";
     opt.server_port = "4433";
-    opt.auth_mode = MBEDTLS_SSL_VERIFY_OPTIONAL;
-    char body[id_len];
-    strncpy(body, enclave_id, strlen(enclave_id));
-    // TODO: Add correct SSL certificate checking
-    
 
+    // TODO: Add correct SSL certificate checking
+    opt.auth_mode = MBEDTLS_SSL_VERIFY_OPTIONAL;
+
+    // Share your ID and the IDs of the trusted enclaves
+    char *body;
+
+    body = generate_gossip_message();
+    
     // Make HTTP request the peer server
     ssl_client(opt, (request_t)gossip_req, NULL, 0, body, buf, sizeof buf);
+
+    process_gossip_response(buf);
     mbedtls_printf("Client ended here\n");
+
     return 1;
 }

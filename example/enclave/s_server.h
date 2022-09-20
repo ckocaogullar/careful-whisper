@@ -4,8 +4,7 @@
 extern "C" {
 #endif
 
-// int ssl_server(unsigned char* output);
-int ssl_server(char *output);
+int ssl_server(char *output, char *response);
 
 
 #if defined(__cplusplus)

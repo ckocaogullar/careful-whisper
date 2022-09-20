@@ -301,13 +301,14 @@ int do_verification(sgx_enclave_id_t eid)
 	verifier_step2(eid, verif_result, &msg01->msg1, &msg3, msg3_size, &msg4);
 
 	// Send msg4
-	printf("Copy/Paste Msg4 Below to Client"); 
+	printf("Copy/Paste Msg4 Below to Client\n"); 
 
 	/* Serialize the members of the Msg4 structure independently */
 	/* vs. the entire structure as one send_msg() */
 
 	msgio->send_partial((void *)&msg4.status, sizeof(msg4.status));
 	msgio->send(&msg4.platformInfoBlob, sizeof(msg4.platformInfoBlob));
+
 	return 1;
 	}
 }
@@ -331,24 +332,30 @@ int do_attestation(sgx_enclave_id_t eid, config_t *config)
 	MsgIO *msgio;
 	int enclaveTrusted = NotTrusted; // Not Trusted
 	int b_pse = OPT_ISSET(flags, OPT_PSE);
-
+	int msgio_established_flag = 0;
 	printf("Eid is %d\n", eid);
 
-	if (config->server == NULL)
-	{
-		msgio = new MsgIO();
-	}
-	else
-	{
-		try
+	while(msgio_established_flag == 0){
+		printf("Trying to establish msgio connection\n");
+		if (config->server == NULL)
 		{
-			msgio = new MsgIO(config->server, (config->port == NULL) ? DEFAULT_PORT : config->port);
+			msgio = new MsgIO();
+			msgio_established_flag = 1;
 		}
-		catch (...)
+		else
 		{
-			exit(1);
+			try
+			{
+				msgio = new MsgIO(config->server, (config->port == NULL) ? DEFAULT_PORT : config->port);
+				msgio_established_flag = 1;
+			}
+			catch (...)
+			{
+				exit(1);
+			}
 		}
 	}
+
 
 	/*
 	 * WARNING! Normally, the public key would be hardcoded into the
@@ -663,6 +670,9 @@ int main(int argc, char **argv)
 				
 				printf("\n ------------------ ATTESTATION FINISHED ------------------\n");
 
+				run_gossip_client(eid, gossip_ret);
+
+
 				printf("Time passed for gossiping %d\n", calc_time_passed(gossip_ch));	
 				printf("Time passed for attestation %d\n", calc_time_passed(full_attestation_ch));	
 
@@ -685,7 +695,10 @@ int main(int argc, char **argv)
 				
 				printf("\n ------------------ VERIFICATION FINISHED ------------------\n");
 
-				printf("Time passed for gossiping %d\n", calc_time_passed(gossip_ch));	
+				run_gossip_server(eid, gossip_ret);
+
+
+				printf("Time passed for gossiping is %d\n", calc_time_passed(gossip_ch));	
 				printf("Time passed for attestation %d\n", calc_time_passed(full_attestation_ch));	
 
 				break;

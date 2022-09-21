@@ -13,9 +13,9 @@ enclave {
         public int sgx_accept();
         public void ssl_conn_init(void);
         public void ssl_conn_teardown(void);
-        public int run_gossip_server();
-        public int run_gossip_client();
-        public void generate_enclave_id([in, count=10] char *set_id, int set_id_len);
+        public int run_gossip_server([in, count=10] char *port);
+        public int run_gossip_client([in, count=10] char *port);
+        public void generate_enclave_id([in, count=50] char *set_id, int set_id_len);
         public void ssl_conn_handle(long int thread_id, [in,out] thread_info_t* thread_info);
         public int verifier_step1(uint32_t msg0_extended_epid_group_id, [in, out] sgx_ra_msg1_t *msg1, [in, out] sgx_ra_msg2_t *msg2, [in, out] char **sigrl);
         public int verifier_step2([in, out]sgx_ra_msg1_t *msg1, [in, out] sgx_ra_msg3_t **msg3, size_t msg3_size, [in, out] ra_msg4_t *msg4);

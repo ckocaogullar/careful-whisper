@@ -20,8 +20,8 @@
 #include "jsmn.h"
 
 #include <unistd.h>
+#include <time.h>
 #include "benchmark.h"
-#include "settings.h"
 
 using namespace std;
 
@@ -58,8 +58,45 @@ typedef struct config_struct
 #define CLEAR_OPT(x, y) x = x & ~y
 #define OPT_ISSET(x, y) x &y
 
+// char ids[2][10];
+// strcpy(ids[0],"enclave_1");
+// strcpy(ids[1], "enclave_2");
+
+char* ids[] =
+{
+    (char*)("enclave_0"),
+    (char*)("enclave_1"),
+    (char*)("enclave_2"),
+
+};
+
+// Peers choose a random index and attempt to be the server at that index.
+// One fails and one succeeds. They do the gossiping and attestation round with that configuration in the first peer round.
+// Inn the seecond peer round, the roles change. Also, the peers talk at the (index + NUM_NODES)th port to avoid any connection errors,
+// Seems that the connections are not cleaned up properly or fast enough to allow for another connection at the same port immediately.
+char* msgio_ports[] =
+{
+    (char*)("7777"),
+    (char*)("7778"),
+    (char*)("7779"),
+    (char*)("7780"),
+    (char*)("7781"),
+    (char*)("7782"),
+};
+
+char* gossip_ssl_ports[] =
+{
+    (char*)("4433"),
+    (char*)("4434"),
+	(char*)("4435"),
+	(char*)("4436"),
+    (char*)("4437"),
+	(char*)("4438"),
+};
+
+char *msgio_port;
 // Initialize chronometres for recording time
-chronometre_t gossip_ch, full_attestation_ch, generate_msg1_ch, generate_msg2_ch, generate_msg3_ch, generate_msg4_ch;
+chronometre_t gossip_ch, full_attestation_ch, full_run_ch, generate_msg1_ch, generate_msg2_ch, generate_msg3_ch, generate_msg4_ch;
 
 int do_verification(sgx_enclave_id_t eid);
 int do_attestation(sgx_enclave_id_t eid, config_t *config);
@@ -197,16 +234,22 @@ int do_verification(sgx_enclave_id_t eid)
 	size_t msg3_size;
 	attestation_status_t attestation_status; 
 	sgx_platform_info_t platform_info;
-	
+	int msgio_failed = 1;
 
-	try
-	{
-		msgio = new MsgIO(NULL, DEFAULT_PORT);
+	while(msgio_failed){
+		try
+		{
+			msgio = new MsgIO(NULL, msgio_port);
+			msgio_failed = 0;
+		}
+		catch (...)
+		{
+			// exit(1);
+			msgio_failed = 1;
+		}
+		printf("Msgio failed %d", msgio_failed);
 	}
-	catch (...)
-	{
-		exit(1);
-	}
+
 
 	while (msgio->server_loop())
 	{
@@ -308,6 +351,7 @@ int do_verification(sgx_enclave_id_t eid)
 
 	msgio->send_partial((void *)&msg4.status, sizeof(msg4.status));
 	msgio->send(&msg4.platformInfoBlob, sizeof(msg4.platformInfoBlob));
+	msgio->disconnect();
 
 	return 1;
 	}
@@ -334,26 +378,22 @@ int do_attestation(sgx_enclave_id_t eid, config_t *config)
 	int b_pse = OPT_ISSET(flags, OPT_PSE);
 	int msgio_established_flag = 0;
 	printf("Eid is %d\n", eid);
+	printf("Msgio port is %s", msgio_port);
 
 	while(msgio_established_flag == 0){
-		printf("Trying to establish msgio connection\n");
-		if (config->server == NULL)
-		{
-			msgio = new MsgIO();
-			msgio_established_flag = 1;
-		}
-		else
-		{
+		
 			try
 			{
-				msgio = new MsgIO(config->server, (config->port == NULL) ? DEFAULT_PORT : config->port);
+				msgio = new MsgIO(config->server, msgio_port);
 				msgio_established_flag = 1;
 			}
 			catch (...)
 			{
-				exit(1);
+				// exit(1);
+				printf("A Msgio error occured \n");
+				msgio_established_flag = 1;
 			}
-		}
+		
 	}
 
 
@@ -538,6 +578,7 @@ int do_attestation(sgx_enclave_id_t eid, config_t *config)
 	fprintf(stderr, "Copy/Paste Msg3 Below to SP\n");
 	msgio->send(msg3, msg3_sz);
 
+
 	if ( msg3 ) {
 		free(msg3);
 		msg3 = NULL;
@@ -577,6 +618,7 @@ int do_attestation(sgx_enclave_id_t eid, config_t *config)
 
 		printf("Enclave Trust is NOT TRUSTED and COMPLICATED. The client is out of date.\n");
 	}
+	msgio->disconnect();
 	return 1;
 }
 
@@ -621,7 +663,7 @@ int main(int argc, char **argv)
 
 		// Set the server and the port
 		config.server = strdup("localhost");
-		config.port = "7777";
+		config.port = msgio_port;
 
 		// Launch the enclave
 		status = sgx_create_enclave_search(ENCLAVE_NAME,
@@ -634,43 +676,54 @@ int main(int argc, char **argv)
 				fprintf(stderr, "Did you forget to set LD_LIBRARY_PATH?\n");
 			return 1;
 		}
-		int *gossip_ret;
+		int gossip_ret;
 		
 		// Generate ID for the initiated enclave
 	
 		int returned;
-		long long time;
 		int encalve_id_flag = 0;
+		int prover_verifier_flag = 1;
+		// Denotes if the peer acted as the server or the client in the first peer round
+		int server_first_flag = 0;
+		// Counting the number of rounds made per peer, can be 2 maximum
+		int peer_round = 0;
+		int self_index;
+		int port_index;
+		char *gossip_port;
+		srand ( time(NULL) );
+
 	
 		// Run the enclave functionality based on the input
-	    while ((opt = getopt(argc, argv, "pvi:")) != -1) {
+	    while ((opt = getopt(argc, argv, "pvmi:n:")) != -1) {
     	    switch (opt) {
 			// Optional ID value for the enclave
 			case 'i':
-				printf("ID provided as OPTARG %s\n", optarg);
+				self_index = atoi(optarg);
+				printf("ID provided as OPTARG %s\n", ids[self_index]);
+
 				// Use the provided ID for the initiated enclave
-				generate_enclave_id(eid, optarg, strlen(optarg));
+				generate_enclave_id(eid, ids[self_index], strlen(ids[self_index]));
 				encalve_id_flag = 1;
 				break;
 			// The enclave will act as a prover
         	case 'p': 
 				// If ID is not provided as an input, generate random ID
-				if(!encalve_id_flag){
-					generate_enclave_id(eid, NULL, 0);
-				}
-				start_chronometre(&gossip_ch);
-				run_gossip_client(eid, gossip_ret);
-				stop_chronometre(&gossip_ch);
+				// if(!encalve_id_flag){
+				// 	generate_enclave_id(eid, NULL, 0);
+				// }
+				// start_chronometre(&gossip_ch);
+				// run_gossip_client(eid, gossip_ret);
+				// stop_chronometre(&gossip_ch);
 	
-				printf("\n ------------------ GOSSIPING FINISHED, STARTING ATTESTATION ------------------\n");
+				// printf("\n ------------------ GOSSIPING FINISHED, STARTING ATTESTATION ------------------\n");
 				
-				start_chronometre(&full_attestation_ch);
-				do_attestation(eid, &config);  
-				stop_chronometre(&full_attestation_ch);
+				// start_chronometre(&full_attestation_ch);
+				// do_attestation(eid, &config);  
+				// stop_chronometre(&full_attestation_ch);
 				
-				printf("\n ------------------ ATTESTATION FINISHED ------------------\n");
+				// printf("\n ------------------ ATTESTATION FINISHED ------------------\n");
 
-				run_gossip_client(eid, gossip_ret);
+				// run_gossip_client(eid, gossip_ret);
 
 
 				printf("Time passed for gossiping %d\n", calc_time_passed(gossip_ch));	
@@ -680,27 +733,124 @@ int main(int argc, char **argv)
 			// The enclave will act as a verifier
         	case 'v': 
 				// If ID is not provided as an input, generate random ID
-				if(!encalve_id_flag){
-					generate_enclave_id(eid, NULL, 0);
-				}
-				start_chronometre(&gossip_ch);
-				run_gossip_server(eid, gossip_ret);
-				stop_chronometre(&gossip_ch);
+				// if(!encalve_id_flag){
+				// 	generate_enclave_id(eid, NULL, 0);
+				// }
+				// start_chronometre(&gossip_ch);
+				// run_gossip_server(eid, gossip_ret);
+				// stop_chronometre(&gossip_ch);
 	
-				printf("\n ------------------ GOSSIPING FINISHED, STARTING VERIFICATION ------------------\n");
+				// printf("\n ------------------ GOSSIPING FINISHED, STARTING VERIFICATION ------------------\n");
 
-				start_chronometre(&full_attestation_ch);
-				do_verification(eid);
-				stop_chronometre(&full_attestation_ch);
+				// start_chronometre(&full_attestation_ch);
+				// do_verification(eid);
+				// stop_chronometre(&full_attestation_ch);
 				
-				printf("\n ------------------ VERIFICATION FINISHED ------------------\n");
+				// printf("\n ------------------ VERIFICATION FINISHED ------------------\n");
 
-				run_gossip_server(eid, gossip_ret);
+				// run_gossip_server(eid, gossip_ret);
 
 
 				printf("Time passed for gossiping is %d\n", calc_time_passed(gossip_ch));	
 				printf("Time passed for attestation %d\n", calc_time_passed(full_attestation_ch));	
 
+				break;
+			case 'm':
+				if(!encalve_id_flag){
+					generate_enclave_id(eid, NULL, 0);
+				}
+
+				// Pick a random index to decide on the port
+				port_index = rand() % (NUM_NODES-1);
+				printf("Port index is %d", port_index);
+				msgio_port = msgio_ports[port_index];
+				gossip_port = gossip_ssl_ports[port_index];
+				
+				while(gossip_ret<NUM_NODES){
+
+				printf("\n ------------------ GOSSIPING STARTING AS SERVER, PEER ROUND %d------------------\n", peer_round);
+
+					if(prover_verifier_flag == 1){
+						start_chronometre(&full_run_ch);
+						start_chronometre(&gossip_ch);
+						run_gossip_server(eid, &gossip_ret, gossip_port);
+						stop_chronometre(&gossip_ch);
+						prover_verifier_flag = 0;
+						printf("Setting prover verifier flag to %d", prover_verifier_flag);
+
+					}
+
+					
+					// If run_gossip_server returns an error, try being the client
+					if(gossip_ret == -1 || server_first_flag == 1){
+				printf("\n ------------------ GOSSIPING STARTING AS CLIENT, PEER ROUND %d------------------\n", peer_round);
+						printf("Trying with the client side now\n");
+						start_chronometre(&gossip_ch);
+						run_gossip_client(eid, &gossip_ret, gossip_port);
+						stop_chronometre(&gossip_ch);
+						prover_verifier_flag = 1;
+						printf("Setting prover verifier flag to %d", prover_verifier_flag);
+
+					} 
+
+					printf("Prover verifier flag set to %d", prover_verifier_flag);
+
+					printf("Number of trusted nodes is %d, NUM_NODES is %d", gossip_ret, NUM_NODES);
+					
+					// If all nodes are collected
+					if(gossip_ret == NUM_NODES){
+						stop_chronometre(&full_run_ch);
+						printf("Know all the nodes now, it took %d\n", calc_time_passed(full_run_ch));
+						break;
+					}
+
+
+
+				printf("\n ------------------ GOSSIPING FINISHED, STARTING ATTESTATION ------------------\n");
+					
+
+					if(prover_verifier_flag == 0){
+				printf("\n ------------------ ATTESTATION STARTING AS VERIFIER------------------\n");
+
+						printf("Acting as the verifier\n");
+						start_chronometre(&full_attestation_ch);
+						do_verification(eid);
+						stop_chronometre(&full_attestation_ch);
+						server_first_flag = 1;
+
+					}
+					else if (prover_verifier_flag == 1)
+					{
+				printf("\n ------------------ ATTESTATION STARTING AS PROVER------------------\n");
+
+						printf("Acting as the prover\n");
+						start_chronometre(&full_attestation_ch);
+						do_attestation(eid, &config);  
+						stop_chronometre(&full_attestation_ch);
+					}
+				printf("\n ------------------ ATTESTATION FINISHED ------------------\n");
+
+				
+				// Prepare for the next peer round
+				peer_round++;
+				port_index += NUM_NODES;
+				msgio_port = msgio_ports[port_index];
+				gossip_port = gossip_ssl_ports[port_index];
+
+				// If the peers have finished their round, switch to another peer
+				if(peer_round == 2){
+				printf("\n ------------------ ROUND FINISHED ------------------\n");
+					port_index = rand() % (NUM_NODES-1);
+					msgio_port = msgio_ports[port_index];
+					gossip_port = gossip_ssl_ports[port_index];
+					prover_verifier_flag = 1;
+					peer_round = 0;
+					server_first_flag = 0;
+					printf("Port index is %d", port_index);
+
+				}
+				}
+				
 				break;
 	        default:
     	        fprintf(stderr, "Usage: %s [-p] for prover, [-v] for verifier.\n", argv[0]);

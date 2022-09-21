@@ -126,7 +126,10 @@ MsgIO::MsgIO(const char *peer, const char *port)
 
 			if ( bind(s, addr->ai_addr, (int) addr->ai_addrlen) == 0 ) break;
 		} else {	// We're the client
-			if ( connect(s, addr->ai_addr, (int) addr->ai_addrlen) == 0 ) break;
+		int ret = connect(s, addr->ai_addr, (int) addr->ai_addrlen);
+			if ( ret == 0 ) break;
+			// else if (ret < 0 ) throw std::runtime_error("could not establish socket");;
+			
 		}
 
 #ifdef _WIN32
@@ -304,7 +307,7 @@ again:
 		if ( bread > 0 ) {
 			size_t idx;
 
-			eprintf("+++ read %ld bytes from socket\n", bread);
+			// eprintf("+++ read %ld bytes from socket\n", bread);
 			rbuffer.append(lbuffer, bread);
 			idx= rbuffer.find("\r\n");
 			if ( idx == string::npos ) {

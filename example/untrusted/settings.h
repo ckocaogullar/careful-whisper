@@ -10,3 +10,4 @@
 // SPID for attestation
 #define SPID "347A02ABAE509A6E43E376C7250FAE99"
 
+#define NUM_NODES 3

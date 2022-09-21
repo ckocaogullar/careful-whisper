@@ -782,7 +782,7 @@ void term_handler( int sig )
 }
 #endif
 
-int ssl_server(char *output, char *response)
+int ssl_server(char *output, char *response, char *port)
 {
     int ret = 0, len, written, frags, exchanges_left;
     int version_suites[4][2];
@@ -883,7 +883,7 @@ int ssl_server(char *output, char *response)
 //#endif
 
     opt.server_addr         = DFL_SERVER_ADDR;
-    opt.server_port         = DFL_SERVER_PORT;
+    opt.server_port         = port;
     opt.debug_level         = DFL_DEBUG_LEVEL;
     opt.nbio                = DFL_NBIO;
     opt.read_timeout        = DFL_READ_TIMEOUT;
@@ -2333,7 +2333,7 @@ exit:
     // Shell can not handle large exit numbers -> 1 for errors
     if( ret < 0 )
         ret = 1;
-
+    mbedtls_printf("Server is returning %d\n", ret);
     return( ret );
 }
 

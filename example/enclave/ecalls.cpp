@@ -30,8 +30,8 @@ int sgx_connect();
 int sgx_accept();
 void ssl_conn_init();
 void ssl_conn_teardown();
-int run_gossip_server();
-int run_gossip_client();
+int run_gossip_server(char *port);
+int run_gossip_client(char *port);
 void ssl_conn_handle(long int thread_id, thread_info_t *thread_info);
 int verifier_step1(uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, sgx_ra_msg2_t *msg2, char **sigrl);
 int verifier_step2(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t **msg3, size_t msg3_size, ra_msg4_t *msg4);
@@ -62,17 +62,18 @@ int sgx_accept()
 {
     char *output;
     char *response;
-    return ssl_server(output, response);
+    char *port;
+    return ssl_server(output, response, port);
 }
 
-int run_gossip_server()
+int run_gossip_server(char *port)
 {
-  return gossip_server();
+  return gossip_server(port);
 }
 
-int run_gossip_client()
+int run_gossip_client(char *port)
 {
-  return gossip_client();
+  return gossip_client(port);
 }
 
 TLSConnectionHandler* connectionHandler;

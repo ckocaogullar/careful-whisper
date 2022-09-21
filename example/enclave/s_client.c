@@ -1078,7 +1078,7 @@ send_request:
             }
 
             len = ret;
-            mbedtls_printf("Output is %s\n", output);
+            // mbedtls_printf("Output is %s\n", output);
             
 #if defined(MBEDTLS_DEBUG_C)
             mbedtls_debug_print_buf(&ssl, 0, __FILE__, __LINE__, "response", output, len);
@@ -1327,15 +1327,15 @@ int parse_response(char buf[], char *body, size_t slen)
 
     // Parse the response status, message, and headers
     phr_parse_response(buf, slen, &minor_version, &stat, &msg, &msg_len, parsed_headers, &num_headers, 0);
-    mbedtls_printf("Msg is %.*s\n", (int)msg_len, msg);
-    mbedtls_printf("Status is %d\n", stat);
-    mbedtls_printf("Headers are:\n");
+    // mbedtls_printf("Msg is %.*s\n", (int)msg_len, msg);
+    // mbedtls_printf("Status is %d\n", stat);
+    // mbedtls_printf("Headers are:\n");
     char header[1024];
     int i;
     for (i = 0; i != num_headers; ++i)
     {
-        mbedtls_printf("%.*s: %.*s\n", (int)parsed_headers[i].name_len, parsed_headers[i].name,
-                       (int)parsed_headers[i].value_len, parsed_headers[i].value);
+        // mbedtls_printf("%.*s: %.*s\n", (int)parsed_headers[i].name_len, parsed_headers[i].name,
+        //                (int)parsed_headers[i].value_len, parsed_headers[i].value);
         strncpy(header, parsed_headers[i].name, parsed_headers[i].name_len);
 
         // Find and record the content length
@@ -1355,7 +1355,7 @@ int parse_response(char buf[], char *body, size_t slen)
     }
 
     strncpy(body, body_start, strlen(buf) - strlen(parsed_headers));
-    mbedtls_printf("Response body is %s\n", body);
+    // mbedtls_printf("Response body is %s\n", body);
 }
 
 void substitution(char *str, char c1, char c2)
@@ -1529,23 +1529,23 @@ int process_msg3(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t **msg3, size_t msg3_size, ra
      */
     quote_sz = (uint32_t)((msg3_size / 2) - sizeof(sgx_ra_msg3_t));
 
-    mbedtls_printf("+++ quote_sz= %lu bytes\n", quote_sz);
-    mbedtls_printf("+++ Msg3 inside the verifier enclave is: %s\n", hexstring(*msg3, msg3_size / 2));
+    // mbedtls_printf("+++ quote_sz= %lu bytes\n", quote_sz);
+    // mbedtls_printf("+++ Msg3 inside the verifier enclave is: %s\n", hexstring(*msg3, msg3_size / 2));
 
-    mbedtls_printf("msg3.quote = %s\n",
-                   hexstring((*msg3)->quote, quote_sz));
+    // mbedtls_printf("msg3.quote = %s\n",
+    //                hexstring((*msg3)->quote, quote_sz));
 
-    /* Make sure Ga matches msg1 */
+    // /* Make sure Ga matches msg1 */
 
-    mbedtls_printf("+++ Verifying msg3.g_a matches msg1.g_a\n");
-    mbedtls_printf("msg1.g_a.gx = %s\n",
-                   hexstring(msg1->g_a.gx, sizeof(msg1->g_a.gx)));
-    mbedtls_printf("msg1.g_a.gy = %s\n",
-                   hexstring(msg1->g_a.gy, sizeof(msg1->g_a.gy)));
-    mbedtls_printf("msg3.g_a.gx = %s\n",
-                   hexstring((*msg3)->g_a.gx, sizeof((*msg3)->g_a.gx)));
-    mbedtls_printf("msg3.g_a.gy = %s\n",
-                   hexstring((*msg3)->g_a.gy, sizeof((*msg3)->g_a.gy)));
+    // mbedtls_printf("+++ Verifying msg3.g_a matches msg1.g_a\n");
+    // mbedtls_printf("msg1.g_a.gx = %s\n",
+    //                hexstring(msg1->g_a.gx, sizeof(msg1->g_a.gx)));
+    // mbedtls_printf("msg1.g_a.gy = %s\n",
+    //                hexstring(msg1->g_a.gy, sizeof(msg1->g_a.gy)));
+    // mbedtls_printf("msg3.g_a.gx = %s\n",
+    //                hexstring((*msg3)->g_a.gx, sizeof((*msg3)->g_a.gx)));
+    // mbedtls_printf("msg3.g_a.gy = %s\n",
+    //                hexstring((*msg3)->g_a.gy, sizeof((*msg3)->g_a.gy)));
 
     if (memcmp(&(*msg3)->g_a, &msg1->g_a, sizeof(sgx_ec256_public_t)) != 0)
     {
@@ -1580,35 +1580,35 @@ int process_msg3(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t **msg3, size_t msg3_size, ra
     }
     q = (sgx_quote_t *)(*msg3)->quote;
 
-    mbedtls_printf("Msg3 Details (in Verifier)\n");
-    mbedtls_printf("msg3.mac                 = %s\n",
-                   hexstring(&(*msg3)->mac, sizeof((*msg3)->mac)));
-    mbedtls_printf("msg3.g_a.gx              = %s\n",
-                   hexstring((*msg3)->g_a.gx, sizeof((*msg3)->g_a.gx)));
-    mbedtls_printf("msg3.g_a.gy              = %s\n",
-                   hexstring(&(*msg3)->g_a.gy, sizeof((*msg3)->g_a.gy)));
-    mbedtls_printf("msg3.ps_sec_prop         = %s\n",
-                   hexstring(&(*msg3)->ps_sec_prop, sizeof((*msg3)->ps_sec_prop)));
-    mbedtls_printf("msg3.quote.version       = %s\n",
-                   hexstring(&q->version, sizeof(uint16_t)));
-    mbedtls_printf("msg3.quote.sign_type     = %s\n",
-                   hexstring(&q->sign_type, sizeof(uint16_t)));
-    mbedtls_printf("msg3.quote.epid_group_id = %s\n",
-                   hexstring(&q->epid_group_id, sizeof(sgx_epid_group_id_t)));
-    mbedtls_printf("msg3.quote.qe_svn        = %s\n",
-                   hexstring(&q->qe_svn, sizeof(sgx_isv_svn_t)));
-    mbedtls_printf("msg3.quote.pce_svn       = %s\n",
-                   hexstring(&q->pce_svn, sizeof(sgx_isv_svn_t)));
-    mbedtls_printf("msg3.quote.xeid          = %s\n",
-                   hexstring(&q->xeid, sizeof(uint32_t)));
-    mbedtls_printf("msg3.quote.basename      = %s\n",
-                   hexstring(&q->basename, sizeof(sgx_basename_t)));
-    mbedtls_printf("msg3.quote.report_body   = %s\n",
-                   hexstring(&q->report_body, sizeof(sgx_report_body_t)));
-    mbedtls_printf("msg3.quote.signature_len = %s\n",
-                   hexstring(&q->signature_len, sizeof(uint32_t)));
-    mbedtls_printf("msg3.quote.signature     = %s\n",
-                   hexstring(&q->signature, q->signature_len));
+    // mbedtls_printf("Msg3 Details (in Verifier)\n");
+    // mbedtls_printf("msg3.mac                 = %s\n",
+    //                hexstring(&(*msg3)->mac, sizeof((*msg3)->mac)));
+    // mbedtls_printf("msg3.g_a.gx              = %s\n",
+    //                hexstring((*msg3)->g_a.gx, sizeof((*msg3)->g_a.gx)));
+    // mbedtls_printf("msg3.g_a.gy              = %s\n",
+    //                hexstring(&(*msg3)->g_a.gy, sizeof((*msg3)->g_a.gy)));
+    // mbedtls_printf("msg3.ps_sec_prop         = %s\n",
+    //                hexstring(&(*msg3)->ps_sec_prop, sizeof((*msg3)->ps_sec_prop)));
+    // mbedtls_printf("msg3.quote.version       = %s\n",
+    //                hexstring(&q->version, sizeof(uint16_t)));
+    // mbedtls_printf("msg3.quote.sign_type     = %s\n",
+    //                hexstring(&q->sign_type, sizeof(uint16_t)));
+    // mbedtls_printf("msg3.quote.epid_group_id = %s\n",
+    //                hexstring(&q->epid_group_id, sizeof(sgx_epid_group_id_t)));
+    // mbedtls_printf("msg3.quote.qe_svn        = %s\n",
+    //                hexstring(&q->qe_svn, sizeof(sgx_isv_svn_t)));
+    // mbedtls_printf("msg3.quote.pce_svn       = %s\n",
+    //                hexstring(&q->pce_svn, sizeof(sgx_isv_svn_t)));
+    // mbedtls_printf("msg3.quote.xeid          = %s\n",
+    //                hexstring(&q->xeid, sizeof(uint32_t)));
+    // mbedtls_printf("msg3.quote.basename      = %s\n",
+    //                hexstring(&q->basename, sizeof(sgx_basename_t)));
+    // mbedtls_printf("msg3.quote.report_body   = %s\n",
+    //                hexstring(&q->report_body, sizeof(sgx_report_body_t)));
+    // mbedtls_printf("msg3.quote.signature_len = %s\n",
+    //                hexstring(&q->signature_len, sizeof(uint32_t)));
+    // mbedtls_printf("msg3.quote.signature     = %s\n",
+    //                hexstring(&q->signature, q->signature_len));
 
     mbedtls_printf("Enclave Quote (base64) ==> Send to IAS\n");
 
@@ -1796,10 +1796,6 @@ int process_msg3(sgx_ra_msg1_t *msg1, sgx_ra_msg3_t **msg3, size_t msg3_size, ra
     // TODO: Add enclave as trusted only if it's actually trusted
     // Currently adding it in any case, because this is a PoC application
     add_as_trusted(peer_id, trusted_ids, &num_trusted_ids);
-    for(int i=0; i<num_trusted_ids; i++){
-        mbedtls_printf("Trusted id %d: %s\n", i, trusted_ids[i]);
-    }
-    mbedtls_printf("Add as trusted worked fine, returning now \n");
     return 1;
 }
 
@@ -1999,26 +1995,26 @@ int process_msg01(uint32_t msg0_extended_epid_group_id, sgx_ra_msg1_t *msg1, sgx
 
     sgx_rijndael128_cmac_msg(&smk, (unsigned char *)msg2, 148, &msg2->mac);
 
-    mbedtls_printf("Msg2 Details\n");
-    mbedtls_printf("msg2->g_b.gx      = %s\n",
-                   hexstring(&msg2->g_b.gx, sizeof(msg2->g_b.gx)));
-    mbedtls_printf("msg2->g_b.gy      = %s\n",
-                   hexstring(&msg2->g_b.gy, sizeof(msg2->g_b.gy)));
-    mbedtls_printf("msg2->spid        = %s\n",
-                   hexstring(&msg2->spid, sizeof(msg2->spid)));
-    mbedtls_printf("msg2->quote_type  = %s\n",
-                   hexstring(&msg2->quote_type, sizeof(msg2->quote_type)));
-    mbedtls_printf("msg2->kdf_id      = %s\n",
-                   hexstring(&msg2->kdf_id, sizeof(msg2->kdf_id)));
-    mbedtls_printf("msg2->sign_gb_ga.x  = %s\n",
-                   hexstring(&msg2->sign_gb_ga.x, sizeof(msg2->sign_gb_ga.x)));
-    mbedtls_printf("msg2->sign_gb_ga.y  = %s\n",
-                   hexstring(&msg2->sign_gb_ga.y, sizeof(msg2->sign_gb_ga.y)));
-    mbedtls_printf("msg2->mac         = %s\n",
-                   hexstring(&msg2->mac, sizeof(msg2->mac)));
-    mbedtls_printf("msg2->sig_rl_size = %s\n",
-                   hexstring(&msg2->sig_rl_size, sizeof(msg2->sig_rl_size)));
-    mbedtls_printf("\n");
+    // mbedtls_printf("Msg2 Details\n");
+    // mbedtls_printf("msg2->g_b.gx      = %s\n",
+    //                hexstring(&msg2->g_b.gx, sizeof(msg2->g_b.gx)));
+    // mbedtls_printf("msg2->g_b.gy      = %s\n",
+    //                hexstring(&msg2->g_b.gy, sizeof(msg2->g_b.gy)));
+    // mbedtls_printf("msg2->spid        = %s\n",
+    //                hexstring(&msg2->spid, sizeof(msg2->spid)));
+    // mbedtls_printf("msg2->quote_type  = %s\n",
+    //                hexstring(&msg2->quote_type, sizeof(msg2->quote_type)));
+    // mbedtls_printf("msg2->kdf_id      = %s\n",
+    //                hexstring(&msg2->kdf_id, sizeof(msg2->kdf_id)));
+    // mbedtls_printf("msg2->sign_gb_ga.x  = %s\n",
+    //                hexstring(&msg2->sign_gb_ga.x, sizeof(msg2->sign_gb_ga.x)));
+    // mbedtls_printf("msg2->sign_gb_ga.y  = %s\n",
+    //                hexstring(&msg2->sign_gb_ga.y, sizeof(msg2->sign_gb_ga.y)));
+    // mbedtls_printf("msg2->mac         = %s\n",
+    //                hexstring(&msg2->mac, sizeof(msg2->mac)));
+    // mbedtls_printf("msg2->sig_rl_size = %s\n",
+    //                hexstring(&msg2->sig_rl_size, sizeof(msg2->sig_rl_size)));
+    // mbedtls_printf("\n");
 
     return 1;
 }
@@ -2085,7 +2081,7 @@ void process_gossip_response(char *response_body){
     }
 }
 
-int gossip_server()
+int gossip_server(char *port)
 {
     mbedtls_printf("Enclave ID is: %s\n", enclave_id);
 
@@ -2093,14 +2089,20 @@ int gossip_server()
 
     char *resp_body = generate_gossip_message();
 
-    int ret = ssl_server(req_body, resp_body);
+    int ret = ssl_server(req_body, resp_body, port);
     process_gossip_response(req_body);
     mbedtls_printf("Peer id received: %s\n", peer_id);
     
-    return 1;
+    // If there is an error with the ssl_server, return -1
+    // Otherwise return the number of trusted IDs
+    if(ret == 1){
+        return -1;
+    } else {
+        return num_trusted_ids;
+    }
 }
 
-int gossip_client()
+int gossip_client(char *port)
 {
     mbedtls_printf("Enclave ID: %s\n", enclave_id);
 
@@ -2110,7 +2112,7 @@ int gossip_client()
     opt.debug_level = 1;
     opt.server_name = "localhost";
     opt.server_addr = "localhost";
-    opt.server_port = "4433";
+    opt.server_port = port;
 
     // TODO: Add correct SSL certificate checking
     opt.auth_mode = MBEDTLS_SSL_VERIFY_OPTIONAL;
@@ -2121,10 +2123,16 @@ int gossip_client()
     body = generate_gossip_message();
     
     // Make HTTP request the peer server
-    ssl_client(opt, (request_t)gossip_req, NULL, 0, body, buf, sizeof buf);
+    int ret = ssl_client(opt, (request_t)gossip_req, NULL, 0, body, buf, sizeof buf);
 
     process_gossip_response(buf);
     mbedtls_printf("Client ended here\n");
 
-    return 1;
+    // If there is an error with the ssl_server, return -1
+    // Otherwise return the number of trusted IDs
+    if(ret != 0){
+        return -1;
+    } else {
+        return num_trusted_ids;
+    }
 }

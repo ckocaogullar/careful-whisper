@@ -1,79 +1,46 @@
-# mbedtls-compat-sgx: mbed TLS Intel(r) SGX Compatibility Layer
+# Careful Whisper: A scalable peer-to-peer attestation protocol (WIP)
 
-mbedtls-compat-sgx is a compatibility layer for [mbedtls](https://github.com/ARMmbed/mbedtls) (previously PolarSSL) to Intel(r) SGX. mbedtls-compat-sgx aims to preserve **all** of the [features of mbedtls](https://tls.mbed.org/core-features). With mbed TLS inside enclaves, you can
+This protocol is a solution to the problem of establishing a peer-to-peer network of Trusted Execution Environments (TEEs), where every node establishes trust with the whole network. This problem can be solved by each node to attesing all other nodes. However, this naive approach has quadratic complexity.
 
-- use a wide array of cryptographic primitives (hash, RSA, ECC, AES, etc).
-- build SGX-secured TLS clients and servers -- even OS cannot access session secrets.
-- SGX multithread support.
-- enjoy the awesome [documentation](https://tls.mbed.org/kb) and clean [API](https://tls.mbed.org/api/) of mbed TLS.
+We propose Careful Whisper protocol (patent applied for) to optimise mutual attestation by propogating information of trusted nodes by gossiping. To put it simply, the nodes follow the logic of 'the friend of my friend is my friend'. By removing the need for each node to attest every other node, this mechanism decreases the number of attestation operations from $\theta$(N^2) to O(N) in the best case. 
 
-In addition, mbedtls-compat-sgx comes with [examples](https://github.com/ffosilva/mbedtls-compat-sgx/tree/master/example) to help you get started. Note that certain functionality is lost due to limitations of SGX. Read on for details.
+## Protocol Details
 
-# Usage and Examples
+This implementation of Careful Whisper consists of 5 messages exchanged between the prover and the verifier, and uses a modified Sigma protocol (i.e. a 3-round proof) [outlined by Intel](https://www.intel.com/content/www/us/en/developer/articles/code-sample/software-guard-extensions-remote-attestation-end-to-end-example.html). 
 
-mbedtls-compat-sgx is a static enclave library. General steps of using mbedtls-SGX in your project are:
+Nodes gossip sensitive trusted node information via TLS connections that terminate within enclaves, using an Intel SGX-compatible version of [mbedtls](https://github.com/ARMmbed/mbedtls). Using TLS between enclaves for gossiping enables compatibility with other attestation protocols.
 
-- compile and install mbedtls-compat-sgx (see below)
-- include `trusted/mbedtls_sgx.edl` in your enclave's EDL file.
-- make sure your compiler can find the headers in `include`.
-- link `libmbedtls_sgx_u.a` to the untrusted part of your application
-- link `libmbedtls_sgx_t.a` to your enclave. Note that mbedtls-SGX needs to be linked in the same group with other SGX standard libs. Your Makefile (or CMakeLists.txt) needs something like
+The steps of the implemented protocol are:
+
+1. Two enclaves establish TLS connection between each other
+1. They exchange their lists of trusted nodes
+1. The server node checks if it already trusts the client node
+ 1. `TRUE`: It expands its list of trusted nodes with the client node’s
+ 1. `FALSE`: Execute the [remote attestation protocol]((https://www.intel.com/content/www/us/en/developer/articles/code-sample/software-guard-extensions-remote-attestation-end-to-end-example.html)) 
+1. Client and server change roles
+
+## Preliminary benchmarking results
+
+| Operation                 | CPU time (ms) |
+|---------------------------|---------------|
+| Peer-to-peer attestation  | ~160ms        |
+| - Generating msg01          | ~0ms          |
+| - Generating msg1           | ~80ms         |
+| - Generating msg3           | ~0ms          |
+| - Generating msg4           | ~80ms         |
+| Gossiping                 | ~14ms         |
+
+## Usage
+
+Use the commands below for building:
 
 ```
--Wl,--start-group  -lmbedtls_sgx_t -lsgx_tstdc -lsgx_tcxx -l$(Crypto_Library_Name) -l$(Service_Library_Name) -Wl,--end-group
-```
-
-## Build
-
-### Local environment
-```
-git clone https://github.com/ffosilva/mbedtls-compat-sgx.git --recursive && cd mbedtls-compat-sgx
+git clone https://github.com/ckocaogullar/careful-whisper.git --recursive && cd mbedtls-compat-sgx
 mkdir build && cd build
-cmake ..
+cmake .. -DCOMPILE_EXAMPLES=YES
 make -j && make install
 ```
 
-### Using Docker
-```
-git clone https://github.com/ffosilva/mbedtls-compat-sgx.git --recursive && cd mbedtls-compat-sgx
-make lib
-```
+You can then run `s_client` with desired options on multiple terminal windows to run the protocol.
 
-Include the resultant `mbedtls_SGX-2.24.0` as part of your project.
 
-```
-mbedtls_SGX-2.24.0
-├── include
-│   └── mbedtls
-└── lib
-    ├── libmbedtls_SGX_t.a
-    ├── libmbedtls_SGX_u.a
-    └── mbedtls_SGX.edl
-
-```
-
-## Examples
-
-To compile examples, run cmake with `-DCOMPILE_EXAMPLES=YES`
-
-```
-cmake .. -DCOMPILE_EXAMPLES=YES
-make -j
-```
-
-Three examples will be built
-
-- `s_client`: a simple TLS client (by default it connects to `google.com:443`, dumps the HTML page and exits)
-- `s_server`: a simple TLS server. You can play with it by `openssl s_client localhost:4433`.
-- `m_server`: a multi-threaded TLS server, also listening at `localhost:4433` by default.
-
-# Missing features and workarounds
-
-Due to SGX's contraints, some features have been turned off.
-
-- The lack of trusted wall-clock time. SGX provides trusted relative timer but not an absolute one. This affects checking expired certificates. A workaround is to maintain an internal clock and calibrate it frequently.
-- No access to file systems: mbedtls-SGX can not load CA files from file systems. To work this around, you need to hardcode root CAs as part of the enclave program. See `example/enclave/ca_bundle.h` for an example.
-
-# License
-
-mbedtls-compat-sgx is open source under Apache 2.0. See LICENSE for more details.
